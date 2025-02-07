@@ -26,6 +26,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from meldataset import build_dataloader, BatchManager, FilePathDataset
 
+
 from models.Utils.PLBERT.util import load_plbert
 
 from models.models import *
@@ -40,7 +41,7 @@ from models.diffusion.sampler import (
 )
 
 from optimizers import build_optimizer
-from stages import train_first, validate_first, train_second, validate_second
+from single_stages import train_first_single_loss, validate_first, train_second_single_loss, validate_second, get_stage_loss_dict
 
 
 # simple fix for dataparallel that allows access to class attributes
@@ -166,6 +167,7 @@ def main(config_path, probe_batch, early_joint, stage, pretrained_model):
     )
 
     with train.accelerator.main_process_first():
+
         # load pretrained ASR model
         text_aligner = load_ASR_models(train.config)
         # load pretrained F0 model
@@ -347,13 +349,24 @@ def main(config_path, probe_batch, early_joint, stage, pretrained_model):
 
 def train_val_loop(train: TrainContext):
     if train.manifest.stage in {"first", "first_tma"}:
-        train.train_batch = train_first
+        train.train_batch = train_first_single_loss
         train.validate = validate_first
     elif train.manifest.stage in {"second", "second_style", "second_joint"}:
-        train.train_batch = train_second
+        train.train_batch = train_second_single_loss
         train.validate = validate_second
     else:
         exit("Invalid training stage. --stage must be 'first' or 'second'")
+
+    # In your main training script, after loading config:
+    stage_loss_dict = get_stage_loss_dict(train)
+    train.weighted_list = []
+
+    # Build a big list with repeated entries, according to each loss weight
+    for loss_name, weight in stage_loss_dict.items():
+        train.weighted_list.extend([loss_name]*int(weight))
+
+    random.shuffle(train.weighted_list)
+    train.loss_index = 0  # pointer
     while train.manifest.current_epoch <= train.manifest.epochs:
         train.running_loss = 0
         train.start_time = time.time()
