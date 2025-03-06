@@ -57,7 +57,7 @@ class FilePathDataset(torch.utils.data.Dataset):
 
         self.cache = {}
         _data_list = [l.strip().split("|") for l in data_list]
-        self.data_list = [data if len(data) == 3 else (*data, 0) for data in _data_list]
+        self.data_list = _data_list  # [data if len(data) == 3 else (*data, 0) for data in _data_list]
         self.text_cleaner = text_cleaner
         self.sr = sr
 
@@ -152,7 +152,7 @@ class FilePathDataset(torch.utils.data.Dataset):
         )
 
     def _load_tensor(self, data):
-        wave_path, text, speaker_id = data
+        wave_path, text, speaker_id, _ = data
         speaker_id = int(speaker_id)
         wave, sr = sf.read(osp.join(self.root_path, wave_path))
         if wave.shape[-1] == 2:
