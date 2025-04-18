@@ -76,9 +76,17 @@ def train_pre_acoustic(
     state = BatchContext(train=train, model=model, text_length=batch.text_length)
     with train.accelerator.autocast():
         pred = state.acoustic_prediction_single(batch, use_random_mono=True)
+        with torch.no_grad():
+            counter = state.acoustic_prediction_single(
+                batch, use_random_mono=True, switch_style=True
+            )
         train.stage.optimizer.zero_grad()
         log = build_loss_log(train)
         train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
+        repulse_loss = train.stft_loss(
+            pred.audio.squeeze(1), counter.audio.squeeze(1), log=None
+        )
+        log.add_loss("repulse", -repulse_loss)
         if pred.magnitude is not None and pred.phase is not None:
             log.add_loss(
                 "magphase",
@@ -95,6 +103,8 @@ def train_acoustic(
     state = BatchContext(train=train, model=model, text_length=batch.text_length)
     with train.accelerator.autocast():
         pred = state.acoustic_prediction_single(batch)
+        with torch.no_grad():
+            counter = state.acoustic_prediction_single(batch, switch_style=True)
         # train.stage.optimizer.zero_grad()
         # d_loss = train.discriminator_loss(
         #     batch.audio_gt.detach().unsqueeze(1).float(), pred.audio.detach()
@@ -106,6 +116,10 @@ def train_acoustic(
 
         log = build_loss_log(train)
         train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
+        repulse_loss = train.stft_loss(
+            pred.audio.squeeze(1), counter.audio.squeeze(1), log=None
+        )
+        log.add_loss("repulse", -repulse_loss)
         # d_index = 0
         # if not probing:
         # d_index = train.manifest.current_total_step % 4

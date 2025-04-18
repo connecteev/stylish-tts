@@ -241,7 +241,9 @@ class BatchContext:
         )
         return prediction
 
-    def acoustic_prediction_single(self, batch, use_random_mono=True):
+    def acoustic_prediction_single(
+        self, batch, use_random_mono=True, switch_style=False
+    ):
         text_encoding = self.text_encoding(batch.text, batch.text_length)
         duration = self.acoustic_duration(
             batch.mel,
@@ -252,7 +254,10 @@ class BatchContext:
             use_random_choice=use_random_mono,
         )
         energy = self.acoustic_energy(batch.mel)
-        style_embedding = self.acoustic_style_embedding(batch.mel)
+        style = batch.mel
+        if switch_style:
+            style = torch.cat([batch.mel[1:], batch.mel[0:1]], dim=0)
+        style_embedding = self.acoustic_style_embedding(style)
         pitch = self.calculate_pitch(batch).detach()
         prediction = self.decoding_single(
             text_encoding,

@@ -68,18 +68,14 @@ class STFTLoss(torch.nn.Module):
             Tensor: Log STFT magnitude loss value.
         """
         x_mag = self.to_mel(x)
-        x_norm = torch.log(torch.norm(x_mag, dim=2))
         x_log = torch.log(1 + x_mag)
 
         y_mag = self.to_mel(y)
-        y_norm = torch.log(torch.norm(y_mag, dim=2))
         y_log = torch.log(1 + y_mag)
 
         sc_loss = F.mse_loss(x_log, y_log) * 2
         # sc_loss = self.spectral_convergence_loss(x_log, y_log)
-        energy_loss = F.smooth_l1_loss(x_norm, y_norm)
-        # log_loss = F.l1_loss(x_log, y_log)
-        return sc_loss, energy_loss  # , log_loss
+        return sc_loss
 
 
 class Resolution:
@@ -145,23 +141,15 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
             Tensor: Multi resolution log STFT magnitude loss value.
         """
         sc_loss = 0.0
-        energy_loss = 0.0
-        # log_loss = 0.0
         for f in self.stft_losses:
-            # sc_l, energy_l, log_l = f(x, y)
-            sc_l, energy_l = f(x, y)
+            sc_l = f(x, y)
             sc_loss += sc_l
-            energy_loss += energy_l
-            # log_loss += log_l
         sc_loss /= len(self.stft_losses)
-        energy_loss /= len(self.stft_losses)
-        # log_loss /= len(self.stft_losses)
 
-        log.add_loss("mel", sc_loss)
-        # log.add_loss("mel_energy", energy_loss)
-        # log.add_loss("mel_log", log_loss)
+        if log is not None:
+            log.add_loss("mel", sc_loss)
 
-        return sc_loss, energy_loss  # , log_loss
+        return sc_loss
 
 
 mp_window = torch.hann_window(20).to("cuda")

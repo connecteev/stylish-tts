@@ -83,6 +83,10 @@ class LossWeightConfig(BaseModel):
     """
 
     mel: float = Field(..., description="Weight for mel spetral convergence loss.")
+    repulse: float = Field(
+        ...,
+        description="Repulsive mel spectral convergence loss for pairs of generated waveforms",
+    )
     generator: float = Field(..., description="Weight for generator loss.")
     slm: float = Field(
         ..., description="Weight for speech-language model feature matching loss."
@@ -271,14 +275,19 @@ class VocosDecoderConfig(BaseModel):
         ..., description="Hop length for iSTFT generator."
     )
 
+
 class ValidationConfig(BaseModel):
     """
     Setup samples to use during validation
     """
+
     sample_count: int = Field(
-        ..., description="Number of samples to generate during validation.")
+        ..., description="Number of samples to generate during validation."
+    )
     force_samples: list = Field(
-        default=[], description="List of segments to use during validation.")
+        default=[], description="List of segments to use during validation."
+    )
+
 
 class FreevDecoderConfig(BaseModel):
     """
