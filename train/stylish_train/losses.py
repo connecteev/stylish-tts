@@ -75,8 +75,8 @@ class STFTLoss(torch.nn.Module):
         y_norm = torch.log(torch.norm(y_mag, dim=2))
         y_log = torch.log(1 + y_mag)
 
-        sc_loss = F.mse_loss(x_log, y_log) * 2
-        # sc_loss = self.spectral_convergence_loss(x_log, y_log)
+        # sc_loss = F.mse_loss(x_log, y_log) * 2
+        sc_loss = self.spectral_convergence_loss(x_log, y_log)
         energy_loss = F.smooth_l1_loss(x_norm, y_norm)
         # log_loss = F.l1_loss(x_log, y_log)
         return sc_loss, energy_loss  # , log_loss
@@ -91,12 +91,15 @@ class Resolution:
 
 
 resolutions = [
-    Resolution(fft=256, hop=31, window=67, mels=40),
-    Resolution(fft=256, hop=67, window=127, mels=40),
-    Resolution(fft=512, hop=127, window=257, mels=80),
-    Resolution(fft=1024, hop=257, window=509, mels=120),
-    Resolution(fft=2048, hop=509, window=1021, mels=120),
-    Resolution(fft=4096, hop=1021, window=2053, mels=120),
+    # Resolution(fft=256, hop=31, window=67, mels=40),
+    # Resolution(fft=256, hop=67, window=127, mels=40),
+    # Resolution(fft=512, hop=127, window=257, mels=80),
+    # Resolution(fft=1024, hop=257, window=509, mels=120),
+    # Resolution(fft=2048, hop=509, window=1021, mels=120),
+    # Resolution(fft=4096, hop=1021, window=2053, mels=120),
+    Resolution(fft=1024, hop=120, window=600, mels=128),
+    Resolution(fft=2048, hop=240, window=1200, mels=128),
+    Resolution(fft=512, hop=50, window=240, mels=128),
 ]
 
 

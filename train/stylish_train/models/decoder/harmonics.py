@@ -17,6 +17,8 @@ class HarmonicGenerator(torch.nn.Module):
         win_length,
         hop_length,
         divisor,
+        out_win_length,
+        out_hop_length,
     ):
         super(HarmonicGenerator, self).__init__()
         self.divisor = divisor
@@ -31,8 +33,10 @@ class HarmonicGenerator(torch.nn.Module):
         self.n_fft = dim_out - 2
         self.win_length = win_length // self.divisor
         self.hop_length = hop_length // self.divisor
-        stft_window = torch.hann_window(self.win_length)
+        stft_window = torch.hann_window(out_win_length // self.divisor)
         self.register_buffer("stft_window", stft_window, persistent=False)
+        self.out_win_length = out_win_length // self.divisor
+        self.out_hop_length = out_hop_length // self.divisor
 
     def forward(self, pitch, energy):
         mask = pitch.repeat_interleave(repeats=self.hop_length, dim=1).unsqueeze(2)
@@ -48,14 +52,14 @@ class HarmonicGenerator(torch.nn.Module):
         transform = torch.stft(
             sines,
             n_fft=self.n_fft,
-            hop_length=self.hop_length,
-            win_length=self.win_length,
+            hop_length=self.out_hop_length,
+            win_length=self.out_win_length,
             window=self.stft_window,
             return_complex=True,
         )
         spec = torch.log(torch.abs(transform) + 1e-7)
         spec = spec[:, :, : spec.shape[2] - spec.shape[2] % 2]
-        spec = spec + energy.unsqueeze(1)
+        # spec = spec + energy.unsqueeze(1)
         phase = torch.angle(transform)
         phase = phase[:, :, : phase.shape[2] - phase.shape[2] % 2]
         return spec, phase

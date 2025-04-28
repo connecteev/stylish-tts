@@ -6,7 +6,8 @@ import transformers
 
 logger = logging.getLogger(__name__)
 logical_step_limit = 10000
-logical_step_warmup = 250
+# logical_step_warmup = 250
+logical_step_warmup = 0
 
 discriminators = {"mpd", "mrd", "msbd", "mstftd"}
 

@@ -32,14 +32,15 @@ class BatchContext:
         self.energy_prediction = None
         self.duration_prediction = None
 
-    def text_encoding(self, texts: torch.Tensor, alignment: torch.Tensor):
-        text_spread = texts.unsqueeze(1).float() @ alignment
-        text_spread = F.interpolate(text_spread, scale_factor=2, mode="nearest-exact")
-        text_spread = text_spread.squeeze(1).int()
-        embedding = self.model.text_encoder(text_spread)
-        embedding = rearrange(embedding, "b t f -> b f t")
-        return embedding
-        # return self.model.text_encoder(texts, text_lengths, self.text_mask)
+    # def text_encoding(self, texts: torch.Tensor, alignment: torch.Tensor):
+    def text_encoding(self, texts: torch.Tensor, text_lengths: torch.Tensor):
+        # text_spread = texts.unsqueeze(1).float() @ alignment
+        # text_spread = F.interpolate(text_spread, scale_factor=2, mode="nearest-exact")
+        # text_spread = text_spread.squeeze(1).int()
+        # embedding = self.model.text_encoder(text_spread)
+        # embedding = rearrange(embedding, "b t f -> b f t")
+        # return embedding
+        return self.model.text_encoder(texts, text_lengths, self.text_mask)
 
     def bert_encoding(self, texts: torch.Tensor):
         mask = (~self.text_mask).int()
@@ -152,10 +153,10 @@ class BatchContext:
         style,
         probing=False,
     ):
-        # mel = self.model.decoder(
-        #     text_encoding @ duration, pitch, energy, style, probing=probing
-        # )
-        mel = self.model.decoder(text_encoding, pitch, energy, style, probing=probing)
+        mel = self.model.decoder(
+            text_encoding @ duration, pitch, energy, style, probing=probing
+        )
+        # mel = self.model.decoder(text_encoding, pitch, energy, style, probing=probing)
         prediction = self.model.generator(
             mel=mel, style=style, pitch=pitch, energy=energy
         )
@@ -202,7 +203,8 @@ class BatchContext:
         return prediction, gt
 
     def acoustic_prediction(self, batch, split=1):
-        text_encoding = self.text_encoding(batch.text, batch.alignment)
+        # text_encoding = self.text_encoding(batch.text, batch.alignment)
+        text_encoding = self.text_encoding(batch.text, batch.text_length)
         duration = self.acoustic_duration(
             batch,
             # batch.align_mel,
@@ -227,7 +229,8 @@ class BatchContext:
         return prediction
 
     def acoustic_prediction_single(self, batch, use_random_mono=True):
-        text_encoding = self.text_encoding(batch.text, batch.alignment)
+        # text_encoding = self.text_encoding(batch.text, batch.alignment)
+        text_encoding = self.text_encoding(batch.text, batch.text_length)
         duration = self.acoustic_duration(
             batch,
             # batch.align_mel,
@@ -250,7 +253,8 @@ class BatchContext:
         return prediction
 
     def textual_prediction_single(self, batch):
-        text_encoding = self.text_encoding(batch.text, batch.alignment)
+        # text_encoding = self.text_encoding(batch.text, batch.alignment)
+        text_encoding = self.text_encoding(batch.text, batch.text_length)
         duration = self.acoustic_duration(
             batch,
             # batch.align_mel,
@@ -287,7 +291,8 @@ class BatchContext:
         return prediction
 
     def sbert_prediction_single(self, batch):
-        text_encoding = self.text_encoding(batch.text, batch.alignment)
+        # text_encoding = self.text_encoding(batch.text, batch.alignment)
+        text_encoding = self.text_encoding(batch.text, batch.text_length)
         duration = self.acoustic_duration(
             batch,
             # batch.align_mel,

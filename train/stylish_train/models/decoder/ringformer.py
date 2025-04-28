@@ -12,6 +12,7 @@ from ..common import init_weights, get_padding
 from .stft import stft
 from .stft import TorchSTFT
 from .conformer import Conformer
+from ..conv_next import ConvNeXtBlock
 from einops import rearrange
 from utils import DecoderPrediction, clamped_exp, leaky_clamp
 
@@ -377,7 +378,7 @@ def padDiff(x):
     )
 
 
-class Generator(torch.nn.Module):
+class RingformerGenerator(torch.nn.Module):
     def __init__(
         self,
         *,
@@ -391,9 +392,10 @@ class Generator(torch.nn.Module):
         gen_istft_hop_size,
         depth,
         sample_rate,
-        # gin_channels=0,
+        win_length,
+        hop_length,
     ):
-        super(Generator, self).__init__()
+        super(RingformerGenerator, self).__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
         self.gen_istft_n_fft = gen_istft_n_fft
@@ -429,16 +431,25 @@ class Generator(torch.nn.Module):
                 )
             )
 
-        self.alphas = nn.ParameterList()
-        self.alphas.append(nn.Parameter(torch.ones(1, upsample_initial_channel, 1)))
+        # self.alphas = nn.ParameterList()
+        # self.alphas.append(nn.Parameter(torch.ones(1, upsample_initial_channel, 1)))
         self.resblocks = nn.ModuleList()
         for i in range(len(self.ups)):
             ch = upsample_initial_channel // (2 ** (i + 1))
-            self.alphas.append(nn.Parameter(torch.ones(1, ch, 1)))
+            # self.alphas.append(nn.Parameter(torch.ones(1, ch, 1)))
             for j, (k, d) in enumerate(
                 zip(resblock_kernel_sizes, resblock_dilation_sizes)
             ):
-                self.resblocks.append(resblock(ch, k, d, style_dim))
+                self.resblocks.append(
+                    ConvNeXtBlock(
+                        dim_in=ch,
+                        dim_out=ch,
+                        intermediate_dim=ch * 4,
+                        style_dim=style_dim,
+                        dilation=d,
+                    )
+                )
+                # self.resblocks.append(resblock(ch, k, d, style_dim))
             c_cur = upsample_initial_channel // (2 ** (i + 1))
 
             if i + 1 < len(upsample_rates):  #
@@ -492,8 +503,11 @@ class Generator(torch.nn.Module):
         # if gin_channels != 0:
         #    self.cond = nn.Conv1d(gin_channels, upsample_initial_channel, 1)
 
-    def forward(self, x, s, f0):  # g=None):
+    def forward(self, mel, style, pitch, energy):
         # x: [b,d,t]
+        x = mel
+        s = style
+        f0 = pitch
         # x = self.conv_pre(x)
         # if g is not None:
         #    x = x + self.cond(g)
@@ -506,7 +520,7 @@ class Generator(torch.nn.Module):
             har = torch.cat([har_spec, har_phase], dim=1)
 
         for i in range(self.num_upsamples):
-            x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
+            # x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
             x = rearrange(x, "b f t -> b t f")
             x = self.conformers[i](x)
             x = rearrange(x, "b t f -> b f t")
@@ -518,17 +532,17 @@ class Generator(torch.nn.Module):
 
             if i == self.num_upsamples - 1:
                 x = self.reflection_pad(x)
-            x = x + x_source
+            # x = x + x_source
 
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
-                    xs = self.resblocks[i * self.num_kernels + j](x, s)
+                    xs = self.resblocks[i * self.num_kernels + j](x, s, x_source)
                 else:
-                    xs += self.resblocks[i * self.num_kernels + j](x, s)
+                    xs += self.resblocks[i * self.num_kernels + j](x, s, x_source)
             x = xs / self.num_kernels
 
-        x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
+        # x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
         # x = self.reflection_pad(x)
         x = self.conv_post(x)
 
@@ -536,7 +550,8 @@ class Generator(torch.nn.Module):
         phase = torch.sin(x[:, self.post_n_fft // 2 + 1 :, :])
 
         out = self.stft.inverse(spec, phase).to(x.device)
-        return out, spec, phase
+        return DecoderPrediction(audio=out, magnitude=spec, phase=phase)
+        # return out, spec, phase
 
     def remove_weight_norm(self):
         logger.info("Removing weight norm...")
