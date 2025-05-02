@@ -51,12 +51,12 @@ class BatchContext:
     def acoustic_duration(
         self,
         batch,
-        # mels: torch.Tensor,
-        # mel_lengths: torch.Tensor,
-        # texts: torch.Tensor,
-        # text_lengths: torch.Tensor,
-        # apply_attention_mask: bool = False,
-        # use_random_choice: bool = False,
+        mels: torch.Tensor,
+        mel_lengths: torch.Tensor,
+        texts: torch.Tensor,
+        text_lengths: torch.Tensor,
+        apply_attention_mask: bool = False,
+        use_random_choice: bool = False,
     ) -> torch.Tensor:
         """
         Computes the duration used for training using a text aligner on
@@ -64,9 +64,54 @@ class BatchContext:
         Returns:
           - duration: Duration attention vector
         """
+
+        # duration = batch.alignment
+        # Create masks.
+        mask = length_to_mask(mel_lengths // 2).to(self.config.training.device)
+
+        # --- Text Aligner Forward Pass ---
+        _, s2s_pred, s2s_attn = self.model.text_aligner(mels, mask, texts)
+        # Remove the last token to make the shape match texts
+        s2s_attn = s2s_attn.transpose(-1, -2)
+        s2s_attn = s2s_attn[..., 1:]
+        s2s_attn = s2s_attn.transpose(-1, -2)
+
+        # Optionally apply extra attention mask.
+        if apply_attention_mask:
+            with torch.no_grad():
+                attn_mask = (
+                    (~mask)
+                    .unsqueeze(-1)
+                    .expand(mask.shape[0], mask.shape[1], self.text_mask.shape[-1])
+                    .float()
+                    .transpose(-1, -2)
+                )
+                attn_mask = (
+                    attn_mask
+                    * (~self.text_mask)
+                    .unsqueeze(-1)
+                    .expand(
+                        self.text_mask.shape[0], self.text_mask.shape[1], mask.shape[-1]
+                    )
+                    .float()
+                )
+                attn_mask = attn_mask < 1
+            s2s_attn.masked_fill_(attn_mask, 0.0)
+
+        # --- Monotonic Attention Path ---
+        with torch.no_grad():
+            mask_ST = mask_from_lens(s2s_attn, text_lengths, mel_lengths // 2)
+            s2s_attn_mono = maximum_path(s2s_attn, mask_ST)
+
+        # --- Text Encoder Forward Pass ---
+        if use_random_choice and bool(random.getrandbits(1)):
+            duration = s2s_attn
+        else:
+            duration = s2s_attn_mono
         duration = batch.alignment
         self.attention = duration[0]
         self.duration_results = (duration, duration)
+        self.s2s_pred = s2s_pred
         return duration
 
     def get_attention(self):
@@ -84,6 +129,7 @@ class BatchContext:
         # mask = mask @ self.duration_results[1]
         # mask = mask.squeeze(1).repeat_interleave(repeats=2, dim=1)
         # return prediction * mask
+        # prediction, _, _ = self.model.pitch_extractor(batch.mel.unsqueeze(1))
         return prediction
 
     def acoustic_style_embedding(self, mels: torch.Tensor):
@@ -153,28 +199,28 @@ class BatchContext:
         style,
         probing=False,
     ):
-        mel = self.model.decoder(
-            text_encoding @ duration, pitch, energy, style, probing=probing
-        )
-        # mel = self.model.decoder(text_encoding, pitch, energy, style, probing=probing)
-        prediction = self.model.generator(
-            mel=mel, style=style, pitch=pitch, energy=energy
-        )
-        # prediction = self.model.decoder(
+        # mel = self.model.decoder(
         #     text_encoding @ duration, pitch, energy, style, probing=probing
         # )
+        # mel = self.model.decoder(text_encoding, pitch, energy, style, probing=probing)
+        # prediction = self.model.generator(
+        #     mel=mel, style=style, pitch=pitch, energy=energy
+        # )
+        prediction = self.model.decoder(
+            text_encoding @ duration, pitch, energy, style, probing=probing
+        )
         return prediction
 
     def mel_reconstruction(self, batch, probing=False):
         text_encoding = self.text_encoding(batch.text, batch.alignment)
         duration = self.acoustic_duration(
             batch,
-            # batch.align_mel,
-            # batch.mel_length,
-            # batch.text,
-            # batch.text_length,
-            # apply_attention_mask=True,
-            # use_random_choice=False,
+            batch.align_mel,
+            batch.mel_length,
+            batch.text,
+            batch.text_length,
+            apply_attention_mask=True,
+            use_random_choice=False,
         )
         energy = self.acoustic_energy(batch.mel)
         style_embedding = self.acoustic_style_embedding(batch.mel)
@@ -207,12 +253,12 @@ class BatchContext:
         text_encoding = self.text_encoding(batch.text, batch.text_length)
         duration = self.acoustic_duration(
             batch,
-            # batch.align_mel,
-            # batch.mel_length,
-            # batch.text,
-            # batch.text_length,
-            # apply_attention_mask=True,
-            # use_random_choice=True,
+            batch.align_mel,
+            batch.mel_length,
+            batch.text,
+            batch.text_length,
+            apply_attention_mask=True,
+            use_random_choice=True,
         )
         energy = self.acoustic_energy(batch.mel)
         style_embedding = self.acoustic_style_embedding(batch.mel)
@@ -233,12 +279,12 @@ class BatchContext:
         text_encoding = self.text_encoding(batch.text, batch.text_length)
         duration = self.acoustic_duration(
             batch,
-            # batch.align_mel,
-            # batch.mel_length,
-            # batch.text,
-            # batch.text_length,
-            # apply_attention_mask=True,
-            # use_random_choice=use_random_mono,
+            batch.align_mel,
+            batch.mel_length,
+            batch.text,
+            batch.text_length,
+            apply_attention_mask=True,
+            use_random_choice=use_random_mono,
         )
         energy = self.acoustic_energy(batch.mel)
         style_embedding = self.acoustic_style_embedding(batch.mel)
@@ -257,12 +303,12 @@ class BatchContext:
         text_encoding = self.text_encoding(batch.text, batch.text_length)
         duration = self.acoustic_duration(
             batch,
-            # batch.align_mel,
-            # batch.mel_length,
-            # batch.text,
-            # batch.text_length,
-            # apply_attention_mask=False,
-            # use_random_choice=False,
+            batch.align_mel,
+            batch.mel_length,
+            batch.text,
+            batch.text_length,
+            apply_attention_mask=False,
+            use_random_choice=False,
         )
         style_embedding = self.acoustic_style_embedding(batch.mel)
         prosody_embedding = self.acoustic_prosody_embedding(batch.mel)
@@ -295,12 +341,12 @@ class BatchContext:
         text_encoding = self.text_encoding(batch.text, batch.text_length)
         duration = self.acoustic_duration(
             batch,
-            # batch.align_mel,
-            # batch.mel_length,
-            # batch.text,
-            # batch.text_length,
-            # apply_attention_mask=False,
-            # use_random_choice=False,
+            batch.align_mel,
+            batch.mel_length,
+            batch.text,
+            batch.text_length,
+            apply_attention_mask=False,
+            use_random_choice=False,
         )
         style_embedding = self.textual_style_embedding(batch.sentence_embedding)
         prosody_embedding = self.textual_prosody_embedding(batch.sentence_embedding)
@@ -330,12 +376,12 @@ class BatchContext:
     def textual_bootstrap_prediction(self, batch):
         _ = self.acoustic_duration(
             batch,
-            # batch.align_mel,
-            # batch.mel_length,
-            # batch.text,
-            # batch.text_length,
-            # apply_attention_mask=False,
-            # use_random_choice=False,
+            batch.align_mel,
+            batch.mel_length,
+            batch.text,
+            batch.text_length,
+            apply_attention_mask=False,
+            use_random_choice=False,
         )
         prosody_embedding = self.acoustic_prosody_embedding(batch.mel)
         plbert_embedding = self.model.bert(

@@ -5,24 +5,19 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
-from torch.nn.utils import remove_weight_norm, spectral_norm
-from torch.nn.utils.parametrizations import weight_norm
+from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
 from ..common import init_weights, get_padding
 
 from .stft import stft
 from .stft import TorchSTFT
 from .conformer import Conformer
-from ..conv_next import ConvNeXtBlock
 from einops import rearrange
-from utils import DecoderPrediction, clamped_exp, leaky_clamp
 
 import math
 import random
 import numpy as np
 from scipy.signal import get_window
-import logging
-
-logger = logging.getLogger(__name__)
+from utils import DecoderPrediction, clamped_exp, leaky_clamp
 
 
 class AdaIN1d(nn.Module):
@@ -35,8 +30,7 @@ class AdaIN1d(nn.Module):
         h = self.fc(s)
         h = h.view(h.size(0), h.size(1), 1)
         gamma, beta = torch.chunk(h, chunks=2, dim=1)
-        result = (1 + gamma) * self.norm(leaky_clamp(x, -1e10, 1e10)) + beta
-        return result
+        return (1 + gamma) * self.norm(x) + beta
 
 
 class AdaINResBlock1(torch.nn.Module):
@@ -378,10 +372,9 @@ def padDiff(x):
     )
 
 
-class RingformerGenerator(torch.nn.Module):
+class Generator(torch.nn.Module):
     def __init__(
         self,
-        *,
         style_dim,
         resblock_kernel_sizes,
         upsample_rates,
@@ -390,12 +383,9 @@ class RingformerGenerator(torch.nn.Module):
         upsample_kernel_sizes,
         gen_istft_n_fft,
         gen_istft_hop_size,
-        depth,
-        sample_rate,
-        win_length,
-        hop_length,
+        # gin_channels=0,
     ):
-        super(RingformerGenerator, self).__init__()
+        super(Generator, self).__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
         self.gen_istft_n_fft = gen_istft_n_fft
@@ -406,7 +396,7 @@ class RingformerGenerator(torch.nn.Module):
         resblock = AdaINResBlock1
 
         self.m_source = SourceModuleHnNSF(
-            sampling_rate=sample_rate,
+            sampling_rate=24000,
             upsample_scale=np.prod(upsample_rates) * gen_istft_hop_size,
             harmonic_num=8,
             voiced_threshod=10,
@@ -431,25 +421,16 @@ class RingformerGenerator(torch.nn.Module):
                 )
             )
 
-        # self.alphas = nn.ParameterList()
-        # self.alphas.append(nn.Parameter(torch.ones(1, upsample_initial_channel, 1)))
+        self.alphas = nn.ParameterList()
+        self.alphas.append(nn.Parameter(torch.ones(1, upsample_initial_channel, 1)))
         self.resblocks = nn.ModuleList()
         for i in range(len(self.ups)):
             ch = upsample_initial_channel // (2 ** (i + 1))
-            # self.alphas.append(nn.Parameter(torch.ones(1, ch, 1)))
+            self.alphas.append(nn.Parameter(torch.ones(1, ch, 1)))
             for j, (k, d) in enumerate(
                 zip(resblock_kernel_sizes, resblock_dilation_sizes)
             ):
-                self.resblocks.append(
-                    ConvNeXtBlock(
-                        dim_in=ch,
-                        dim_out=ch,
-                        intermediate_dim=ch * 4,
-                        style_dim=style_dim,
-                        dilation=d,
-                    )
-                )
-                # self.resblocks.append(resblock(ch, k, d, style_dim))
+                self.resblocks.append(resblock(ch, k, d, style_dim))
             c_cur = upsample_initial_channel // (2 ** (i + 1))
 
             if i + 1 < len(upsample_rates):  #
@@ -478,7 +459,7 @@ class RingformerGenerator(torch.nn.Module):
             self.conformers.append(
                 Conformer(
                     dim=ch,
-                    depth=depth,
+                    depth=2,
                     dim_head=64,
                     heads=8,
                     ff_mult=4,
@@ -503,11 +484,8 @@ class RingformerGenerator(torch.nn.Module):
         # if gin_channels != 0:
         #    self.cond = nn.Conv1d(gin_channels, upsample_initial_channel, 1)
 
-    def forward(self, mel, style, pitch, energy):
+    def forward(self, x, s, f0):  # g=None):
         # x: [b,d,t]
-        x = mel
-        s = style
-        f0 = pitch
         # x = self.conv_pre(x)
         # if g is not None:
         #    x = x + self.cond(g)
@@ -520,7 +498,7 @@ class RingformerGenerator(torch.nn.Module):
             har = torch.cat([har_spec, har_phase], dim=1)
 
         for i in range(self.num_upsamples):
-            # x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
+            x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
             x = rearrange(x, "b f t -> b t f")
             x = self.conformers[i](x)
             x = rearrange(x, "b t f -> b f t")
@@ -532,29 +510,27 @@ class RingformerGenerator(torch.nn.Module):
 
             if i == self.num_upsamples - 1:
                 x = self.reflection_pad(x)
-            # x = x + x_source
+            x = x + x_source
 
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
-                    xs = self.resblocks[i * self.num_kernels + j](x, s, x_source)
+                    xs = self.resblocks[i * self.num_kernels + j](x, s)
                 else:
-                    xs += self.resblocks[i * self.num_kernels + j](x, s, x_source)
+                    xs += self.resblocks[i * self.num_kernels + j](x, s)
             x = xs / self.num_kernels
 
-        # x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
+        x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
         # x = self.reflection_pad(x)
         x = self.conv_post(x)
 
-        spec = clamped_exp(x[:, : self.post_n_fft // 2 + 1, :])
+        spec = torch.exp(x[:, : self.post_n_fft // 2 + 1, :])
         phase = torch.sin(x[:, self.post_n_fft // 2 + 1 :, :])
-
         out = self.stft.inverse(spec, phase).to(x.device)
-        return DecoderPrediction(audio=out, magnitude=spec, phase=phase)
-        # return out, spec, phase
+        return out, spec, phase
 
     def remove_weight_norm(self):
-        logger.info("Removing weight norm...")
+        print("Removing weight norm...")
         for l in self.ups:
             remove_weight_norm(l)
         for l in self.resblocks:
@@ -640,23 +616,21 @@ class UpSample1d(nn.Module):
 class Decoder(nn.Module):
     def __init__(
         self,
-        *,
-        dim_in,
-        style_dim,
-        dim_out,
-        resblock_kernel_sizes,
-        upsample_rates,
-        upsample_initial_channel,
-        resblock_dilation_sizes,
-        upsample_kernel_sizes,
-        gen_istft_n_fft,
-        gen_istft_hop_size,
-        conformer_depth,
-        sample_rate,
+        dim_in=512,
+        F0_channel=512,
+        style_dim=64,
+        dim_out=80,
+        resblock_kernel_sizes=[3, 7, 11],
+        upsample_rates=[10, 6],
+        upsample_initial_channel=512,
+        resblock_dilation_sizes=[[1, 3, 5], [1, 3, 5], [1, 3, 5]],
+        upsample_kernel_sizes=[20, 12],
+        gen_istft_n_fft=20,
+        gen_istft_hop_size=5,
+        conformer_depth=2,
+        sample_rate=24000,
     ):
         super().__init__()
-
-        self.conv_pretrain = Conv1d(dim_out, upsample_initial_channel, 7, 1, padding=3)
 
         self.decode = nn.ModuleList()
 
@@ -680,60 +654,57 @@ class Decoder(nn.Module):
         )
 
         self.generator = Generator(
-            style_dim=style_dim,
-            resblock_kernel_sizes=resblock_kernel_sizes,
-            upsample_rates=upsample_rates,
-            upsample_initial_channel=upsample_initial_channel,
-            resblock_dilation_sizes=resblock_dilation_sizes,
-            upsample_kernel_sizes=upsample_kernel_sizes,
-            gen_istft_n_fft=gen_istft_n_fft,
-            gen_istft_hop_size=gen_istft_hop_size,
-            depth=conformer_depth,
-            sample_rate=sample_rate,
+            style_dim,
+            resblock_kernel_sizes,
+            upsample_rates,
+            upsample_initial_channel,
+            resblock_dilation_sizes,
+            upsample_kernel_sizes,
+            gen_istft_n_fft,
+            gen_istft_hop_size,
         )
 
-    def forward(self, asr, F0_curve, N, s, pretrain=False, probing=False):
-        if not pretrain:
-            if self.training:
-                downlist = [0, 3, 7]
-                F0_down = downlist[random.randint(0, 2)]
-                downlist = [0, 3, 7, 15]
-                N_down = downlist[random.randint(0, 3)]
-                if F0_down:
-                    F0_curve = (
-                        nn.functional.conv1d(
-                            F0_curve.unsqueeze(1),
-                            torch.ones(1, 1, F0_down).to("cuda"),
-                            padding=F0_down // 2,
-                        ).squeeze(1)
-                        / F0_down
-                    )
-                if N_down:
-                    N = (
-                        nn.functional.conv1d(
-                            N.unsqueeze(1),
-                            torch.ones(1, 1, N_down).to("cuda"),
-                            padding=N_down // 2,
-                        ).squeeze(1)
-                        / N_down
-                    )
+    def forward(self, asr, F0_curve, N, s, probing=False):
+        if self.training:
+            downlist = [0, 3, 7]
+            F0_down = downlist[random.randint(0, 2)]
+            downlist = [0, 3, 7, 15]
+            N_down = downlist[random.randint(0, 3)]
+            if F0_down:
+                F0_curve = (
+                    nn.functional.conv1d(
+                        F0_curve.unsqueeze(1),
+                        torch.ones(1, 1, F0_down).to("cuda"),
+                        padding=F0_down // 2,
+                    ).squeeze(1)
+                    / F0_down
+                )
+            if N_down:
+                N = (
+                    nn.functional.conv1d(
+                        N.unsqueeze(1),
+                        torch.ones(1, 1, N_down).to("cuda"),
+                        padding=N_down // 2,
+                    ).squeeze(1)
+                    / N_down
+                )
 
-            F0 = self.F0_conv(F0_curve.unsqueeze(1))
-            N = self.N_conv(N.unsqueeze(1))
+        F0 = self.F0_conv(F0_curve.unsqueeze(1))
+        N = self.N_conv(N.unsqueeze(1))
 
-            x = torch.cat([asr, F0, N], axis=1)
-            x = self.encode(x, s)
-            asr_res = self.asr_res(asr)
+        x = torch.cat([asr, F0, N], axis=1)
+        x = self.encode(x, s)
 
-            res = True
-            for block in self.decode:
-                if res:
-                    x = torch.cat([x, asr_res, F0, N], axis=1)
-                x = block(x, s)
-                if block.upsample_type != "none":
-                    res = False
-        else:
-            x = self.conv_pretrain(asr)
+        asr_res = self.asr_res(asr)
+
+        res = True
+        for block in self.decode:
+            if res:
+                x = torch.cat([x, asr_res, F0, N], axis=1)
+            x = block(x, s)
+            if block.upsample_type != "none":
+                res = False
 
         x, mag, phase = self.generator(x, s, F0_curve)
+        # return x, mag, phase
         return DecoderPrediction(audio=x, magnitude=mag, phase=phase)

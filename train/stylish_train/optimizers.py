@@ -85,15 +85,16 @@ class MultiOptimizer:
             _ = [self.optimizers[key].zero_grad() for key in self.keys]
 
     def scheduler(self, step: int, step_limit: int, stage: str):
-        logical_step = step * logical_step_limit // step_limit
-        plateau = 0.9
-        if stage == "pre_acoustic":
-            plateau = 0.5
-        logical_step = min(logical_step, logical_step_limit * plateau)
-        for key in self.keys:
-            if key not in discriminators:
-                self.schedulers[key].scheduler.last_epoch = logical_step
-                self.schedulers[key].step()
+        pass
+        # logical_step = step * logical_step_limit // step_limit
+        # plateau = 0.9
+        # if stage == "pre_acoustic":
+        #     plateau = 0.5
+        # logical_step = min(logical_step, logical_step_limit * plateau)
+        # for key in self.keys:
+        #     if key not in discriminators:
+        #         self.schedulers[key].scheduler.last_epoch = logical_step
+        #         self.schedulers[key].step()
 
 
 def build_optimizer(stage_name: str, *, train):
@@ -109,11 +110,20 @@ def build_optimizer(stage_name: str, *, train):
             eps=1e-9,
         )
         if key not in discriminators:
-            schedulers[key] = transformers.get_cosine_schedule_with_warmup(
+            schedulers[key] = torch.optim.lr_scheduler.OneCycleLR(
                 optim[key],
-                num_warmup_steps=logical_step_warmup,
-                num_training_steps=logical_step_limit,
+                max_lr=lr,
+                epochs=200,
+                steps_per_epoch=1000,
+                pct_start=0.0,
+                div_factor=1,
+                final_div_factor=1,
             )
+            # schedulers[key] = transformers.get_cosine_schedule_with_warmup(
+            #     optim[key],
+            #     num_warmup_steps=logical_step_warmup,
+            #     num_training_steps=logical_step_limit,
+            # )
     multi_optim = MultiOptimizer(
         optimizers=optim,
         schedulers=schedulers,
@@ -123,25 +133,27 @@ def build_optimizer(stage_name: str, *, train):
 
 
 def calculate_lr(key, stage_name, *, train):
-    is_second = (
-        stage_name == "second"
-        or stage_name == "second_style"
-        or stage_name == "second_joint"
-        or stage_name == "textual"
-        or stage_name == "joint"
-    )
+    # is_second = (
+    #     stage_name == "second"
+    #     or stage_name == "second_style"
+    #     or stage_name == "second_joint"
+    #     or stage_name == "textual"
+    #     or stage_name == "joint"
+    # )
     lr = train.config.optimizer.lr
     if stage_name == "alignment" or stage_name == "text_encoder":
         lr /= 10
     # elif stage_name == "pre_acoustic":
     #     lr /= 5
+    # weight_decay = 1e-4
+    # betas = (0.85, 0.99)
     weight_decay = 1e-4
     betas = (0.85, 0.99)
-    if is_second:
-        if key == "bert":
-            lr = train.config.optimizer.bert_lr
-            weight_decay = 1e-2
-            betas = (0.9, 0.99)
-        elif key in {"decoder", "style_encoder"}:
-            lr = train.config.optimizer.ft_lr
+    # if is_second:
+    #     if key == "bert":
+    #         lr = train.config.optimizer.bert_lr
+    #         weight_decay = 1e-2
+    #         betas = (0.9, 0.99)
+    #     elif key in {"decoder", "style_encoder"}:
+    #         lr = train.config.optimizer.ft_lr
     return lr, weight_decay, betas

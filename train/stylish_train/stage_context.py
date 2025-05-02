@@ -107,7 +107,7 @@ stages = {
         train_fn=train_pre_acoustic,
         validate_fn=validate_acoustic,
         train_models=["text_encoder", "decoder", "acoustic_style_encoder", "generator"],
-        eval_models=[],
+        eval_models=["text_aligner", "pitch_extractor"],
         adversarial=False,
         inputs=[
             "text",
@@ -132,7 +132,7 @@ stages = {
             "decoder",
             "generator",
         ],
-        eval_models=[],
+        eval_models=["text_aligner", "pitch_extractor"],
         adversarial=True,
         inputs=[
             "text",
@@ -314,7 +314,7 @@ class StageContext:
         self.max_epoch = train.config.training_plan.dict()[name]
         self.train_fn = stages[name].train_fn
         self.validate_fn = stages[name].validate_fn
-        self.optimizer.reset_lr(name, train)
+        # self.optimizer.reset_lr(name, train)
         train.reset_out_dir(name)
         self.last_batch_load = None
         self.out_dir = train.out_dir

@@ -725,4 +725,4 @@ class Decoder(nn.Module):
                 res = False
 
         x, mag, phase = self.generator(x, s, F0_curve)
-        return DecoderPrediction(audio=x, magnitude=mag, phase=phase)
+        return DecoderPrediction(audio=x)  # , magnitude=mag, phase=phase)

@@ -159,16 +159,16 @@ class TextAlignerConfig(BaseModel):
     )
 
 
-# class PitchExtractorConfig(BaseModel):
-#     """
-#     Configuration for the pitch extractor component.
-#     """
+class PitchExtractorConfig(BaseModel):
+    """
+    Configuration for the pitch extractor component.
+    """
 
-#     num_class: int = Field(..., description="Number of classes for pitch extraction.")
-#     seq_len: int = Field(..., description="Sequence length for pitch extraction.")
-#     leaky_relu_slope: float = Field(
-#         ..., description="Slope for the leaky ReLU activation function."
-#     )
+    num_class: int = Field(..., description="Number of classes for pitch extraction.")
+    seq_len: int = Field(..., description="Sequence length for pitch extraction.")
+    leaky_relu_slope: float = Field(
+        ..., description="Slope for the leaky ReLU activation function."
+    )
 
 
 class PLBERTConfig(BaseModel):
@@ -448,9 +448,9 @@ class ModelConfig(BaseModel):
     text_aligner: TextAlignerConfig = Field(
         ..., description="Configuration for the text aligner component."
     )
-    # pitch_extractor: PitchExtractorConfig = Field(
-    #     ..., description="Configuration for the pitch extractor component."
-    # )
+    pitch_extractor: PitchExtractorConfig = Field(
+        ..., description="Configuration for the pitch extractor component."
+    )
     plbert: PLBERTConfig = Field(..., description="Configuration for the PLBERT model.")
     decoder: Union[
         # HiFiGANDecoderConfig,

@@ -148,7 +148,13 @@ def train_pre_acoustic(
         train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
         # log.add_loss("mel-reconstruction", F.smooth_l1_loss(rec, batch.mel) * 100)
     freev_loss(log, pred, batch.audio_gt, train)
-    train.accelerator.backward(log.backwards_loss() * math.sqrt(batch.text.shape[0]))
+    if pred.magnitude is not None and pred.phase is not None:
+        log.add_loss(
+            "magphase",
+            magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
+        )
+    train.accelerator.backward(log.total())
+    # train.accelerator.backward(log.backwards_loss() * math.sqrt(batch.text.shape[0]))
     return log.detach(), pred.audio.detach()
     # return log.detach(), pred.detach()
 

@@ -148,10 +148,10 @@ class ConformerBlock(nn.Module):
             dim=dim,
             dim_head=dim_head,
             heads=heads,
-            causal=False,
+            causal=True,
             striped_ring_attn=False,
             auto_shard_seq=False,
-            ring_attn=False,
+            ring_attn=True,
             ring_seq_size=512,
         )
         self.self_attn_dropout = torch.nn.Dropout(attn_dropout)

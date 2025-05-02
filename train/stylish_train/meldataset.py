@@ -95,6 +95,8 @@ class FilePathDataset(torch.utils.data.Dataset):
         sentences = []
         for line in data_list:
             fields = line.strip().split("|")
+            if len(fields) == 3:
+                fields.append(" ")
             if len(fields) != 4:
                 exit("Dataset lines must have 4 |-delimited fields: " + fields)
             self.data_list.append(fields)
@@ -110,7 +112,7 @@ class FilePathDataset(torch.utils.data.Dataset):
             n_fft=model_config.n_fft,
             win_length=model_config.win_length,
             hop_length=model_config.hop_length,
-            sample_rate=model_config.sample_rate,
+            # sample_rate=model_config.sample_rate,
         )
 
         self.to_mel = torchaudio.transforms.MelSpectrogram(
@@ -118,7 +120,7 @@ class FilePathDataset(torch.utils.data.Dataset):
             n_fft=model_config.n_fft,
             win_length=model_config.win_length,
             hop_length=model_config.hop_length,
-            sample_rate=model_config.sample_rate,
+            # sample_rate=model_config.sample_rate,
         )
 
         # self.min_length = min_length
@@ -204,10 +206,10 @@ class FilePathDataset(torch.utils.data.Dataset):
                 if bin_num not in time_bins:
                     time_bins[bin_num] = []
                 time_bins[bin_num].append(i)
-            else:
-                exit(
-                    f"Segment Length Too Short. Must be at least 0.25 seconds: {self.data_list[i][0]}"
-                )
+            # else:
+            #     exit(
+            #         f"Segment Length Too Short. Must be at least 0.25 seconds: {self.data_list[i][0]}"
+            #     )
         return time_bins
 
     def __len__(self):
@@ -528,14 +530,20 @@ class DynamicBatchSampler(torch.utils.data.Sampler):
             key = sample_keys[index]
             current_samples = samples[key]
             batch_size = min(len(current_samples), self.get_batch_size(key))
-            batch = current_samples[:batch_size]
-            remaining = current_samples[batch_size:]
-            if len(remaining) == 0 or (self.drop_last and len(remaining) < batch_size):
-                del samples[key]
-            else:
-                samples[key] = remaining
-            yield batch
-            self.train.stage.load_batch_sizes()
+            done = False
+            while not done:
+                batch = current_samples[:batch_size]
+                remaining = current_samples[batch_size:]
+                if len(remaining) == 0 or (
+                    self.drop_last and len(remaining) < batch_size
+                ):
+                    del samples[key]
+                    done = True
+                else:
+                    samples[key] = remaining
+                    current_samples = remaining
+                yield batch
+                self.train.stage.load_batch_sizes()
             sample_keys = list(samples.keys())
 
     def __len__(self):

@@ -218,6 +218,9 @@ class MelDecoder(torch.nn.Module):
             AdainResBlk1d(bottleneck_dim + residual_dim + 2, bottleneck_dim, style_dim)
         )
         self.decode1.append(
+            AdainResBlk1d(bottleneck_dim + residual_dim + 2, bottleneck_dim, style_dim)
+        )
+        self.decode1.append(
             AdainResBlk1d(
                 bottleneck_dim + residual_dim + 2, dim_in, style_dim, upsample="none"
             )

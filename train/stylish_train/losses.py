@@ -24,9 +24,10 @@ class SpectralConvergenceLoss(torch.nn.Module):
         Returns:
             Tensor: Spectral convergence loss value.
         """
-        num = torch.linalg.matrix_norm(y_mag - x_mag)
-        denom = torch.linalg.matrix_norm(y_mag)
-        return (num / denom).mean()
+        # num = torch.linalg.matrix_norm(y_mag - x_mag)
+        # denom = torch.linalg.matrix_norm(y_mag)
+        # return (num / denom).mean()
+        return torch.norm(y_mag - x_mag, p=1) / torch.norm(y_mag, p=1)
 
 
 class STFTLoss(torch.nn.Module):
@@ -67,19 +68,28 @@ class STFTLoss(torch.nn.Module):
             Tensor: Spectral convergence loss value.
             Tensor: Log STFT magnitude loss value.
         """
-        x_mag = self.to_mel(x)
-        x_norm = torch.log(torch.norm(x_mag, dim=2))
-        x_log = torch.log(1 + x_mag)
-
-        y_mag = self.to_mel(y)
-        y_norm = torch.log(torch.norm(y_mag, dim=2))
-        y_log = torch.log(1 + y_mag)
+        #         x_mag = self.to_mel(x)
+        #         x_norm = torch.log(torch.norm(x_mag, dim=2))
+        #         x_log = torch.log(1 + x_mag)
+        #
+        #         y_mag = self.to_mel(y)
+        #         y_norm = torch.log(torch.norm(y_mag, dim=2))
+        #         y_log = torch.log(1 + y_mag)
 
         # sc_loss = F.mse_loss(x_log, y_log) * 2
-        sc_loss = self.spectral_convergence_loss(x_log, y_log)
-        energy_loss = F.smooth_l1_loss(x_norm, y_norm)
+        # sc_loss = self.spectral_convergence_loss(x_log, y_log)
+        # energy_loss = F.smooth_l1_loss(x_norm, y_norm)
         # log_loss = F.l1_loss(x_log, y_log)
-        return sc_loss, energy_loss  # , log_loss
+        x_mag = self.to_mel(x)
+        mean, std = -4, 4
+        x_mag = (torch.log(1e-5 + x_mag) - mean) / std
+
+        y_mag = self.to_mel(y)
+        mean, std = -4, 4
+        y_mag = (torch.log(1e-5 + y_mag) - mean) / std
+
+        sc_loss = self.spectral_convergence_loss(x_mag, y_mag)
+        return sc_loss, 0  # energy_loss  # , log_loss
 
 
 class Resolution:
