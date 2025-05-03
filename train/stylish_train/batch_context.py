@@ -5,7 +5,6 @@ import torch
 from torch.nn import functional as F
 import torchaudio
 from einops import rearrange, reduce
-from monotonic_align import mask_from_lens
 import train_context
 from config_loader import Config
 from utils import length_to_mask, log_norm, maximum_path
@@ -65,53 +64,9 @@ class BatchContext:
           - duration: Duration attention vector
         """
 
-        # duration = batch.alignment
-        # Create masks.
-        mask = length_to_mask(mel_lengths // 2).to(self.config.training.device)
-
-        # --- Text Aligner Forward Pass ---
-        _, s2s_pred, s2s_attn = self.model.text_aligner(mels, mask, texts)
-        # Remove the last token to make the shape match texts
-        s2s_attn = s2s_attn.transpose(-1, -2)
-        s2s_attn = s2s_attn[..., 1:]
-        s2s_attn = s2s_attn.transpose(-1, -2)
-
-        # Optionally apply extra attention mask.
-        if apply_attention_mask:
-            with torch.no_grad():
-                attn_mask = (
-                    (~mask)
-                    .unsqueeze(-1)
-                    .expand(mask.shape[0], mask.shape[1], self.text_mask.shape[-1])
-                    .float()
-                    .transpose(-1, -2)
-                )
-                attn_mask = (
-                    attn_mask
-                    * (~self.text_mask)
-                    .unsqueeze(-1)
-                    .expand(
-                        self.text_mask.shape[0], self.text_mask.shape[1], mask.shape[-1]
-                    )
-                    .float()
-                )
-                attn_mask = attn_mask < 1
-            s2s_attn.masked_fill_(attn_mask, 0.0)
-
-        # --- Monotonic Attention Path ---
-        with torch.no_grad():
-            mask_ST = mask_from_lens(s2s_attn, text_lengths, mel_lengths // 2)
-            s2s_attn_mono = maximum_path(s2s_attn, mask_ST)
-
-        # --- Text Encoder Forward Pass ---
-        if use_random_choice and bool(random.getrandbits(1)):
-            duration = s2s_attn
-        else:
-            duration = s2s_attn_mono
         duration = batch.alignment
         self.attention = duration[0]
         self.duration_results = (duration, duration)
-        self.s2s_pred = s2s_pred
         return duration
 
     def get_attention(self):

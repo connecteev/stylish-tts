@@ -1,4 +1,4 @@
-from monotonic_align.core1alt import maximum_path_c1alt
+# from monotonic_align.core1alt import maximum_path_c1alt
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
