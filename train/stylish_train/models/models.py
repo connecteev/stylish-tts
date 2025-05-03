@@ -114,12 +114,12 @@ def build_model(model_config: ModelConfig):
     #         hop_length=model_config.hop_length,
     #     )
 
-    text_encoder = TextEncoder(
-        channels=model_config.inter_dim,
-        kernel_size=model_config.text_encoder.kernel_size,
-        depth=model_config.text_encoder.n_layer,
-        n_symbols=model_config.text_encoder.n_token,
-    )
+    # text_encoder = TextEncoder(
+    #     channels=model_config.inter_dim,
+    #     kernel_size=model_config.text_encoder.kernel_size,
+    #     depth=model_config.text_encoder.n_layer,
+    #     n_symbols=model_config.text_encoder.n_token,
+    # )
 
     # text_mel_generator = TextMelGenerator(
     #     dim_in=model_config.n_mels,
@@ -139,12 +139,12 @@ def build_model(model_config: ModelConfig):
     #     max_seq_len = 2304,
     #     return_embeddings = True
     # ))
-    #     text_encoder = TextEncoder(
-    #         num_tokens=model_config.text_encoder.n_token,
-    #         inter_dim=model_config.inter_dim,
-    #         num_heads=8,
-    #         num_layers=6,
-    #     )
+    text_encoder = TextEncoder(
+        num_tokens=model_config.text_encoder.n_token,
+        inter_dim=model_config.inter_dim,
+        num_heads=8,
+        num_layers=4,
+    )
     #
     #     text_mel_classifier = TextMelClassifier(
     #         inter_dim=model_config.inter_dim, n_mels=model_config.n_mels
