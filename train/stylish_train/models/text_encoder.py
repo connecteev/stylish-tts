@@ -184,7 +184,9 @@ class TextEncoder(torch.nn.Module):
             ffn_dim=inter_dim * 2,
             num_layers=num_layers,
             depthwise_conv_kernel_size=15,
+            dropout=0.2,
             use_group_norm=True,
+            convolution_first=True,
         )
 
     def forward(self, x):
