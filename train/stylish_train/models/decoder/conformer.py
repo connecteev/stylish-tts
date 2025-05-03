@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from einops.layers.torch import Rearrange
 from .ring_attention_pytorch import RingAttention
 import logging
+from torchaudio.models.conformer import ConformerLayer
 
 logger = logging.getLogger(__name__)
 # helper functions
@@ -144,16 +145,18 @@ class ConformerBlock(nn.Module):
     ):
         super().__init__()
         self.ff1 = FeedForward(dim=dim, mult=ff_mult, dropout=ff_dropout)
-        self.attn = RingAttention(
-            dim=dim,
-            dim_head=dim_head,
-            heads=heads,
-            causal=True,
-            striped_ring_attn=False,
-            auto_shard_seq=False,
-            ring_attn=True,
-            ring_seq_size=512,
-        )
+
+        self.attn = torch.nn.MultiheadAttention(dim, heads, dropout=attn_dropout)
+        # self.attn = RingAttention(
+        #     dim=dim,
+        #     dim_head=dim_head,
+        #     heads=heads,
+        #     causal=True,
+        #     striped_ring_attn=False,
+        #     auto_shard_seq=False,
+        #     ring_attn=True,
+        #     ring_seq_size=512,
+        # )
         self.self_attn_dropout = torch.nn.Dropout(attn_dropout)
         self.conv = ConformerConvModule(
             dim=dim,
@@ -170,9 +173,9 @@ class ConformerBlock(nn.Module):
 
         self.post_norm = nn.LayerNorm(dim)
 
-    def forward(self, x, mask=None):
+    def forward(self, x):
         x_ff1 = self.ff1(x) + x
-        x = self.attn(x, mask=mask)
+        x = self.attn(x)
         x = self.self_attn_dropout(x)
         x = x + x_ff1
         x = self.conv(x) + x
@@ -206,20 +209,29 @@ class Conformer(nn.Module):
 
         for _ in range(depth):
             self.layers.append(
-                ConformerBlock(
-                    dim=dim,
-                    dim_head=dim_head,
-                    heads=heads,
-                    ff_mult=ff_mult,
-                    conv_expansion_factor=conv_expansion_factor,
-                    conv_kernel_size=conv_kernel_size,
-                    conv_causal=conv_causal,
+                ConformerLayer(
+                    input_dim=dim,
+                    ffn_dim=dim * ff_mult,
+                    num_attention_heads=heads,
+                    depthwise_conv_kernel_size=conv_kernel_size,
+                    dropout=conv_dropout,
+                    use_group_norm=True,
+                    convolution_first=False,
                 )
+                # ConformerBlock(
+                #     dim=dim,
+                #     dim_head=dim_head,
+                #     heads=heads,
+                #     ff_mult=ff_mult,
+                #     conv_expansion_factor=conv_expansion_factor,
+                #     conv_kernel_size=conv_kernel_size,
+                #     conv_causal=conv_causal,
+                # )
             )
 
     def forward(self, x):
 
         for block in self.layers:
-            x = block(x)
+            x = block(x, key_padding_mask=None)
 
         return x
