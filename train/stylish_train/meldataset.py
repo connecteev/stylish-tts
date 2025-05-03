@@ -523,27 +523,32 @@ class DynamicBatchSampler(torch.utils.data.Sampler):
 
         sample_keys = list(samples.keys())
         while len(sample_keys) > 0:
+            index = 0
             if self.shuffle:
-                index = torch.randint(0, len(sample_keys), [1], generator=g)[0]
-            else:
-                index = 0
+                total_weight = 0
+                for key in sample_keys:
+                    total_weight += len(samples[key]) // self.get_batch_size(key) + 1
+                weight = torch.randint(0, total_weight, [1], generator=g)[0]
+                for i in range(len(sample_keys)):
+                    weight -= (
+                        len(samples[sample_keys[i]])
+                        // self.get_batch_size(sample_keys[i])
+                        + 1
+                    )
+                    if weight <= 0:
+                        index = i
+                        break
             key = sample_keys[index]
             current_samples = samples[key]
             batch_size = min(len(current_samples), self.get_batch_size(key))
-            done = False
-            while not done:
-                batch = current_samples[:batch_size]
-                remaining = current_samples[batch_size:]
-                if len(remaining) == 0 or (
-                    self.drop_last and len(remaining) < batch_size
-                ):
-                    del samples[key]
-                    done = True
-                else:
-                    samples[key] = remaining
-                    current_samples = remaining
-                yield batch
-                self.train.stage.load_batch_sizes()
+            batch = current_samples[:batch_size]
+            remaining = current_samples[batch_size:]
+            if len(remaining) == 0 or (self.drop_last and len(remaining) < batch_size):
+                del samples[key]
+            else:
+                samples[key] = remaining
+            yield batch
+            self.train.stage.load_batch_sizes()
             sample_keys = list(samples.keys())
 
     def __len__(self):
