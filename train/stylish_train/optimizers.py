@@ -85,16 +85,15 @@ class MultiOptimizer:
             _ = [self.optimizers[key].zero_grad() for key in self.keys]
 
     def scheduler(self, step: int, step_limit: int, stage: str):
-        pass
-        # logical_step = step * logical_step_limit // step_limit
-        # plateau = 0.9
-        # if stage == "pre_acoustic":
-        #     plateau = 0.5
-        # logical_step = min(logical_step, logical_step_limit * plateau)
-        # for key in self.keys:
-        #     if key not in discriminators:
-        #         self.schedulers[key].scheduler.last_epoch = logical_step
-        #         self.schedulers[key].step()
+        logical_step = step * logical_step_limit // step_limit
+        plateau = 0.9
+        if stage == "pre_acoustic":
+            plateau = 0.5
+        logical_step = min(logical_step, logical_step_limit * plateau)
+        for key in self.keys:
+            if key not in discriminators:
+                self.schedulers[key].scheduler.last_epoch = logical_step
+                self.schedulers[key].step()
 
 
 def build_optimizer(stage_name: str, *, train):
@@ -110,20 +109,11 @@ def build_optimizer(stage_name: str, *, train):
             eps=1e-9,
         )
         if key not in discriminators:
-            schedulers[key] = torch.optim.lr_scheduler.OneCycleLR(
+            schedulers[key] = transformers.get_cosine_schedule_with_warmup(
                 optim[key],
-                max_lr=lr,
-                epochs=200,
-                steps_per_epoch=1000,
-                pct_start=0.0,
-                div_factor=1,
-                final_div_factor=1,
+                num_warmup_steps=logical_step_warmup,
+                num_training_steps=logical_step_limit,
             )
-            # schedulers[key] = transformers.get_cosine_schedule_with_warmup(
-            #     optim[key],
-            #     num_warmup_steps=logical_step_warmup,
-            #     num_training_steps=logical_step_limit,
-            # )
     multi_optim = MultiOptimizer(
         optimizers=optim,
         schedulers=schedulers,
