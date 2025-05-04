@@ -394,7 +394,7 @@ class Generator(torch.nn.Module):
         # self.conv_pre = Conv1d(
         #    initial_channel, upsample_initial_channel, 7, 1, padding=3
         # )
-        resblock = AdaINResBlock1
+        # resblock = AdaINResBlock1
 
         self.m_source = SourceModuleHnNSF(
             sampling_rate=24000,
@@ -406,7 +406,7 @@ class Generator(torch.nn.Module):
             scale_factor=np.prod(upsample_rates) * gen_istft_hop_size
         )
         self.noise_convs = nn.ModuleList()
-        self.noise_res = nn.ModuleList()
+        # self.noise_res = nn.ModuleList()
 
         self.ups = nn.ModuleList()
         for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
@@ -422,16 +422,25 @@ class Generator(torch.nn.Module):
                 )
             )
 
-        self.alphas = nn.ParameterList()
-        self.alphas.append(nn.Parameter(torch.ones(1, upsample_initial_channel, 1)))
+        # self.alphas = nn.ParameterList()
+        # self.alphas.append(nn.Parameter(torch.ones(1, upsample_initial_channel, 1)))
         self.resblocks = nn.ModuleList()
         for i in range(len(self.ups)):
             ch = upsample_initial_channel // (2 ** (i + 1))
-            self.alphas.append(nn.Parameter(torch.ones(1, ch, 1)))
+            # self.alphas.append(nn.Parameter(torch.ones(1, ch, 1)))
             for j, (k, d) in enumerate(
                 zip(resblock_kernel_sizes, resblock_dilation_sizes)
             ):
-                self.resblocks.append(resblock(ch, k, d, style_dim))
+                self.resblocks.append(
+                    ConvNeXtBlock(
+                        dim_in=ch,
+                        dim_out=ch,
+                        intermediate_dim=ch * 4,
+                        style_dim=style_dim,
+                        dilation=d,
+                    )
+                )
+                # self.resblocks.append(resblock(ch, k, d, style_dim))
             c_cur = upsample_initial_channel // (2 ** (i + 1))
 
             if i + 1 < len(upsample_rates):  #
@@ -445,12 +454,12 @@ class Generator(torch.nn.Module):
                         padding=(stride_f0 + 1) // 2,
                     )
                 )
-                self.noise_res.append(resblock(c_cur, 7, [1, 3, 5], style_dim))
+                # self.noise_res.append(resblock(c_cur, 7, [1, 3, 5], style_dim))
             else:
                 self.noise_convs.append(
                     Conv1d(gen_istft_n_fft + 2, c_cur, kernel_size=1)
                 )
-                self.noise_res.append(resblock(c_cur, 11, [1, 3, 5], style_dim))
+                # self.noise_res.append(resblock(c_cur, 11, [1, 3, 5], style_dim))
 
         self.conformers = nn.ModuleList()
         self.post_n_fft = self.gen_istft_n_fft
@@ -497,32 +506,35 @@ class Generator(torch.nn.Module):
             har_source = har_source.transpose(1, 2).squeeze(1)
             har_spec, har_phase = self.stft.transform(har_source)
             har = torch.cat([har_spec, har_phase], dim=1)
+            if har.shape[2] % 2 == 1:
+                har = har[:, :, :-1]
 
         for i in range(self.num_upsamples):
-            x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
+            # x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
             x = rearrange(x, "b f t -> b t f")
             x = self.conformers[i](x)
             x = rearrange(x, "b t f -> b f t")
 
             x_source = self.noise_convs[i](har)
-            x_source = self.noise_res[i](x_source, s)
+            # x_source = self.noise_res[i](x_source, s)
 
             x = self.ups[i](x)
-
-            if i == self.num_upsamples - 1:
-                x = self.reflection_pad(x)
-            x = x + x_source
+            if x.shape[2] % 2 == 1:
+                x = x[:, :, :-1]
+            # if i == self.num_upsamples - 1:
+            # x = self.reflection_pad(x)
+            # x = x + x_source
 
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
-                    xs = self.resblocks[i * self.num_kernels + j](x, s)
+                    xs = self.resblocks[i * self.num_kernels + j](x, s, x_source)
                 else:
-                    xs += self.resblocks[i * self.num_kernels + j](x, s)
+                    xs += self.resblocks[i * self.num_kernels + j](x, s, x_source)
             x = xs / self.num_kernels
 
-        x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
-        # x = self.reflection_pad(x)
+        # x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
+        x = self.reflection_pad(x)
         x = self.conv_post(x)
 
         spec = torch.exp(x[:, : self.post_n_fft // 2 + 1, :])
