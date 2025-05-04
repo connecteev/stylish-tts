@@ -11,6 +11,7 @@ from ..common import init_weights, get_padding
 from .stft import stft
 from .stft import TorchSTFT
 from .conformer import Conformer
+from ..conv_next import ConvNeXtBlock
 from einops import rearrange
 
 import math
@@ -634,12 +635,61 @@ class Decoder(nn.Module):
 
         self.decode = nn.ModuleList()
 
-        self.encode = AdainResBlk1d(dim_in + 2, 1024, style_dim)
+        self.encode = ConvNeXtBlock(
+            dim_in=dim_in + 2,
+            dim_out=1024,
+            intermediate_dim=4096,
+            style_dim=style_dim,
+            dilation=[1],
+            activation=True,
+        )
 
-        self.decode.append(AdainResBlk1d(1024 + 2 + 64, 1024, style_dim))
-        self.decode.append(AdainResBlk1d(1024 + 2 + 64, 1024, style_dim))
-        self.decode.append(AdainResBlk1d(1024 + 2 + 64, 1024, style_dim))
-        self.decode.append(AdainResBlk1d(1024 + 2 + 64, 512, style_dim))
+        # self.encode = AdainResBlk1d(dim_in + 2, 1024, style_dim)
+
+        self.decode.append(
+            ConvNeXtBlock(
+                dim_in=1024 + 2 + 64,
+                dim_out=1024,
+                intermediate_dim=4096,
+                style_dim=style_dim,
+                dilation=[1],
+                activation=True,
+            )
+        )
+        self.decode.append(
+            ConvNeXtBlock(
+                dim_in=1024 + 2 + 64,
+                dim_out=1024,
+                intermediate_dim=4096,
+                style_dim=style_dim,
+                dilation=[1],
+                activation=True,
+            )
+        )
+        self.decode.append(
+            ConvNeXtBlock(
+                dim_in=1024 + 2 + 64,
+                dim_out=1024,
+                intermediate_dim=4096,
+                style_dim=style_dim,
+                dilation=[1],
+                activation=True,
+            )
+        )
+        self.decode.append(
+            ConvNeXtBlock(
+                dim_in=1024 + 2 + 64,
+                dim_out=512,
+                intermediate_dim=4096,
+                style_dim=style_dim,
+                dilation=[1],
+                activation=True,
+            )
+        )
+        # self.decode.append(AdainResBlk1d(1024 + 2 + 64, 1024, style_dim))
+        # self.decode.append(AdainResBlk1d(1024 + 2 + 64, 1024, style_dim))
+        # self.decode.append(AdainResBlk1d(1024 + 2 + 64, 1024, style_dim))
+        # self.decode.append(AdainResBlk1d(1024 + 2 + 64, 512, style_dim))
 
         self.F0_conv = weight_norm(nn.Conv1d(1, 1, kernel_size=3, groups=1, padding=1))
 
@@ -693,13 +743,13 @@ class Decoder(nn.Module):
 
         asr_res = self.asr_res(asr)
 
-        res = True
+        # res = True
         for block in self.decode:
-            if res:
-                x = torch.cat([x, asr_res, F0, N], axis=1)
+            # if res:
+            x = torch.cat([x, asr_res, F0, N], axis=1)
             x = block(x, s)
-            if block.upsample_type != "none":
-                res = False
+            # if block.upsample_type != "none":
+            # res = False
 
         x, mag, phase = self.generator(x, s, F0_curve)
         # return x, mag, phase
