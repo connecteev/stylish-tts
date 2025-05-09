@@ -539,6 +539,14 @@ class RingformerGenerator(torch.nn.Module):
 
         spec = torch.exp(x[:, : self.post_n_fft // 2 + 1, :])
         phase = torch.sin(x[:, self.post_n_fft // 2 + 1 :, :])
+        noise = torch.clamp(torch.randn_like(phase) * 0.3, min=-1, max=1)
+        mask = torch.less(pitch, 10).to(torch.float)
+        mask = mask.unsqueeze(1)
+        mask = F.interpolate(mask, size=phase.shape[-1], mode="nearest")
+        imask = torch.greater_equal(pitch, 10).to(torch.float)
+        imask = imask.unsqueeze(1)
+        imask = F.interpolate(imask, size=phase.shape[-1], mode="nearest")
+        phase = (noise * mask) + (phase * imask)
         out = self.stft.inverse(spec, phase).to(x.device)
         return DecoderPrediction(audio=out, magnitude=spec, phase=phase)
 

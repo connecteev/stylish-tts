@@ -149,7 +149,7 @@ def train_pre_acoustic(
         if pred.magnitude is not None and pred.phase is not None:
             log.add_loss(
                 "magphase",
-                magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
+                magphase_loss(pred.magnitude, pred.phase, batch.audio_gt, batch.pitch),
             )
         # log.add_loss("mel-reconstruction", F.smooth_l1_loss(rec, batch.mel) * 100)
     freev_loss(log, pred, batch.audio_gt, train)
@@ -193,7 +193,7 @@ def train_acoustic(
         if pred.magnitude is not None and pred.phase is not None:
             log.add_loss(
                 "magphase",
-                magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
+                magphase_loss(pred.magnitude, pred.phase, batch.audio_gt, batch.pitch),
             )
 
         loss_s2s = 0
@@ -269,7 +269,7 @@ def train_textual(
         if pred.magnitude is not None and pred.phase is not None:
             log.add_loss(
                 "magphase",
-                magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
+                magphase_loss(pred.magnitude, pred.phase, batch.audio_gt, batch.pitch),
             )
         log.add_loss(
             "pitch",
@@ -322,7 +322,7 @@ def train_joint(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.T
         if pred.magnitude is not None and pred.phase is not None:
             log.add_loss(
                 "magphase",
-                magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
+                magphase_loss(pred.magnitude, pred.phase, batch.audio_gt, batch.pitch),
             )
         log.add_loss(
             "pitch",
