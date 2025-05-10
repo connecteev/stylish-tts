@@ -228,7 +228,26 @@ class BatchContext:
         return prediction
 
     def acoustic_prediction_single(self, batch, use_random_mono=True):
-        text_encoding = self.text_encoding(batch.text, batch.text_length)
+        # text_encoding = self.text_encoding(batch.text, batch.text_length)
+        # duration = self.acoustic_duration(
+        #     batch,
+        #     # batch.align_mel,
+        #     # batch.mel_length,
+        #     # batch.text,
+        #     # batch.text_length,
+        #     # apply_attention_mask=True,
+        #     # use_random_choice=use_random_mono,
+        # )
+        # energy = self.acoustic_energy(batch.mel)
+        # style_embedding = self.acoustic_style_embedding(batch.mel)
+        # pitch = self.calculate_pitch(batch).detach()
+        # prediction = self.decoding_single(
+        #     text_encoding,
+        #     duration,
+        #     pitch,
+        #     energy,
+        #     style_embedding,
+        # )
         duration = self.acoustic_duration(
             batch,
             # batch.align_mel,
@@ -239,14 +258,14 @@ class BatchContext:
             # use_random_choice=use_random_mono,
         )
         energy = self.acoustic_energy(batch.mel)
-        style_embedding = self.acoustic_style_embedding(batch.mel)
-        pitch = self.calculate_pitch(batch).detach()
-        prediction = self.decoding_single(
-            text_encoding,
-            duration,
-            pitch,
-            energy,
-            style_embedding,
+        prediction = self.model.pair(
+            text=batch.text,
+            text_length=batch.text_length,
+            duration=duration,
+            mel=batch.mel,
+            pitch=batch.pitch,
+            energy=energy,
+            text_mask=self.text_mask,
         )
         return prediction
 

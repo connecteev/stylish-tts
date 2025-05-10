@@ -42,6 +42,7 @@ class TextEncoder(nn.Module):
         self.lstm = nn.LSTM(
             channels, channels // 2, 1, batch_first=True, bidirectional=True
         )
+        self.post_proj = nn.Linear(channels - 1, channels, bias=False)
 
     def forward(self, x, input_lengths, m):
         x = self.embedding(x)  # [B, T, emb]
@@ -63,13 +64,12 @@ class TextEncoder(nn.Module):
         self.lstm.flatten_parameters()
         x, _ = self.lstm(x)
         x, _ = nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
-
+        x = self.post_proj(x)
         x = x.transpose(-1, -2)
         x_pad = torch.zeros([x.shape[0], x.shape[1], m.shape[-1]])
 
         x_pad[:, :, : x.shape[-1]] = x
         x = x_pad.to(x.device)
-
         x.masked_fill_(m, 0.0)
 
         return x

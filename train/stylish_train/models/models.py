@@ -29,6 +29,7 @@ from .style_encoder import StyleEncoder
 from .decoder.mel_decoder import MelDecoder
 from .decoder.freev import FreevGenerator
 from .decoder.ringformer import RingformerGenerator
+from .model_pair import ModelPair
 
 from munch import Munch
 import safetensors
@@ -47,70 +48,42 @@ def build_model(model_config: ModelConfig):
         vocab_size=model_config.text_encoder.n_token,
         **(model_config.plbert.model_dump()),
     )
+    pair = ModelPair(model_config)
 
-    assert model_config.decoder.type in [
-        # "istftnet",
-        # "hifigan",
-        "ringformer",
-        # "vocos",
-        "freev",
-    ], "Decoder type unknown"
+    # assert model_config.decoder.type in [
+    #     # "istftnet",
+    #     # "hifigan",
+    #     "ringformer",
+    #     # "vocos",
+    #     "freev",
+    # ], "Decoder type unknown"
 
-    if model_config.decoder.type == "ringformer":
-        decoder = MelDecoder(
-            dim_in=model_config.inter_dim,
-            style_dim=model_config.style_dim,
-            dim_out=model_config.inter_dim,
-        )
-        generator = RingformerGenerator(
-            style_dim=model_config.style_dim,
-            resblock_kernel_sizes=model_config.decoder.resblock_kernel_sizes,
-            upsample_rates=model_config.decoder.upsample_rates,
-            upsample_initial_channel=model_config.decoder.upsample_initial_channel,
-            resblock_dilation_sizes=model_config.decoder.resblock_dilation_sizes,
-            upsample_kernel_sizes=model_config.decoder.upsample_kernel_sizes,
-            gen_istft_n_fft=model_config.decoder.gen_istft_n_fft,
-            gen_istft_hop_size=model_config.decoder.gen_istft_hop_size,
-            sample_rate=model_config.sample_rate,
-        )
-    else:
-        decoder = MelDecoder()
-        generator = FreevGenerator()
+    # if model_config.decoder.type == "ringformer":
+    #     decoder = MelDecoder(
+    #         dim_in=model_config.inter_dim,
+    #         style_dim=model_config.style_dim,
+    #         dim_out=model_config.inter_dim,
+    #     )
+    #     generator = RingformerGenerator(
+    #         style_dim=model_config.style_dim,
+    #         resblock_kernel_sizes=model_config.decoder.resblock_kernel_sizes,
+    #         upsample_rates=model_config.decoder.upsample_rates,
+    #         upsample_initial_channel=model_config.decoder.upsample_initial_channel,
+    #         resblock_dilation_sizes=model_config.decoder.resblock_dilation_sizes,
+    #         upsample_kernel_sizes=model_config.decoder.upsample_kernel_sizes,
+    #         gen_istft_n_fft=model_config.decoder.gen_istft_n_fft,
+    #         gen_istft_hop_size=model_config.decoder.gen_istft_hop_size,
+    #         sample_rate=model_config.sample_rate,
+    #     )
+    # else:
+    #     decoder = MelDecoder()
+    #     generator = FreevGenerator()
 
-    text_encoder = TextEncoder(
-        channels=model_config.inter_dim,
-        kernel_size=model_config.text_encoder.kernel_size,
-        depth=model_config.text_encoder.n_layer,
-        n_symbols=model_config.text_encoder.n_token,
-    )
-
-    # text_mel_generator = TextMelGenerator(
-    #     dim_in=model_config.n_mels,
-    #     hidden_dim=512,
-    #     num_heads=16,
-    #     num_layers=10,
-    # )
-
-    # text_encoder = Autopadder(ReformerLM(
-    #     num_tokens = model_config.text_encoder.n_token,
-    #     # emb_dim = 128,
-    #     dim = model_config.inter_dim,
-    #     dim_head = 64,
-    #     heads = 16,
-    #     depth = 10,
-    #     ff_mult = 4,
-    #     max_seq_len = 2304,
-    #     return_embeddings = True
-    # ))
     # text_encoder = TextEncoder(
-    #     num_tokens=model_config.text_encoder.n_token,
-    #     inter_dim=model_config.inter_dim,
-    #     num_heads=8,
-    #     num_layers=4,
-    # )
-
-    # text_mel_classifier = TextMelClassifier(
-    #     inter_dim=model_config.inter_dim, n_mels=model_config.n_mels
+    #     channels=model_config.inter_dim,
+    #     kernel_size=model_config.text_encoder.kernel_size,
+    #     depth=model_config.text_encoder.n_layer,
+    #     n_symbols=model_config.text_encoder.n_token,
     # )
 
     duration_predictor = DurationPredictor(
@@ -135,12 +108,12 @@ def build_model(model_config: ModelConfig):
     #    dropout=model_config.prosody_predictor.dropout,
     # )
 
-    style_encoder = StyleEncoder(
-        dim_in=model_config.style_encoder.dim_in,
-        style_dim=model_config.style_dim,
-        max_conv_dim=model_config.style_encoder.hidden_dim,
-        skip_downsamples=model_config.style_encoder.skip_downsamples,
-    )
+    # style_encoder = StyleEncoder(
+    #     dim_in=model_config.style_encoder.dim_in,
+    #     style_dim=model_config.style_dim,
+    #     max_conv_dim=model_config.style_encoder.hidden_dim,
+    #     skip_downsamples=model_config.style_encoder.skip_downsamples,
+    # )
     # style_encoder = StyleEncoder(
     #     mel_dim=model_config.n_mels,
     #     style_dim=model_config.style_dim,
@@ -167,12 +140,13 @@ def build_model(model_config: ModelConfig):
     nets = Munch(
         bert=bert,
         bert_encoder=nn.Linear(bert.config.hidden_size, model_config.inter_dim),
+        pair=pair,
         # predictor=predictor,
         duration_predictor=duration_predictor,
         pitch_energy_predictor=pitch_energy_predictor,
-        decoder=decoder,
-        generator=generator,
-        text_encoder=text_encoder,
+        # decoder=decoder,
+        # generator=generator,
+        # text_encoder=text_encoder,
         # text_mel_generator=text_mel_generator,
         # text_mel_classifier=text_mel_classifier,
         # TODO Make this a config option
@@ -186,7 +160,7 @@ def build_model(model_config: ModelConfig):
             model_config.style_dim,
         ),
         acoustic_prosody_encoder=predictor_encoder,
-        acoustic_style_encoder=style_encoder,
+        # acoustic_style_encoder=style_encoder,
         # diffusion=diffusion,
         text_aligner=text_aligner,
         # pitch_extractor=pitch_extractor,

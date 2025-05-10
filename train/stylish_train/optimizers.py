@@ -52,7 +52,7 @@ class MultiOptimizer:
         self.reset_discriminator_schedulers()
 
     def step_discriminator_schedulers(self):
-        gen_lr = self.optimizers["decoder"].param_groups[0]["lr"]
+        gen_lr = self.optimizers["pair"].param_groups[0]["lr"]
         if isinstance(gen_lr, torch.Tensor):
             gen_lr = gen_lr.item()
         for key in discriminators:
@@ -65,7 +65,7 @@ class MultiOptimizer:
                     param_group["lr"] = lr
 
     def reset_discriminator_schedulers(self):
-        lr = self.optimizers["decoder"].param_groups[0]["lr"]
+        lr = self.optimizers["pair"].param_groups[0]["lr"]
         if isinstance(lr, torch.Tensor):
             lr = lr.item()
         for key in discriminators:

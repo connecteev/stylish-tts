@@ -110,12 +110,14 @@ class MelDecoder(nn.Module):
         # TODO Use arguments instead of hardcoding
         self.decode = nn.ModuleList()
 
-        self.encode = AdainResBlk1d(dim_in + 2, 1024, style_dim)
+        self.encode = AdainResBlk1d(dim_in + 2, dim_in, style_dim)
 
-        self.decode.append(AdainResBlk1d(1024 + 2 + 64, 1024, style_dim))
-        self.decode.append(AdainResBlk1d(1024 + 2 + 64, 1024, style_dim))
-        self.decode.append(AdainResBlk1d(1024 + 2 + 64, 1024, style_dim))
-        self.decode.append(AdainResBlk1d(1024 + 2 + 64, 512, style_dim, upsample=True))
+        self.decode.append(AdainResBlk1d(dim_in + 2 + 64, dim_in, style_dim))
+        self.decode.append(AdainResBlk1d(dim_in + 2 + 64, dim_in, style_dim))
+        self.decode.append(AdainResBlk1d(dim_in + 2 + 64, dim_in, style_dim))
+        self.decode.append(
+            AdainResBlk1d(dim_in + 2 + 64, dim_out, style_dim, upsample=True)
+        )
 
         self.F0_conv = weight_norm(
             nn.Conv1d(1, 1, kernel_size=3, stride=2, groups=1, padding=1)
@@ -126,7 +128,7 @@ class MelDecoder(nn.Module):
         )
 
         self.asr_res = nn.Sequential(
-            weight_norm(nn.Conv1d(512, 64, kernel_size=1)),
+            weight_norm(nn.Conv1d(dim_in, 64, kernel_size=1)),
         )
 
     def forward(self, asr, F0_curve, N, s, probing=False):
