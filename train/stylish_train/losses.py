@@ -349,6 +349,13 @@ class WavLMLoss(torch.nn.Module):
         return torch.nn.functional.l1_loss(wav_tensor, y_rec_tensor)
 
 
+def relativistic_loss(real, generated):
+    diff = (real - generated) ** 2
+    median = torch.median(diff)
+    loss = torch.mean((diff - median)[diff > median])
+    return loss
+
+
 def compute_duration_ce_loss(
     duration_prediction: List[torch.Tensor],
     duration: List[torch.Tensor],
@@ -368,6 +375,7 @@ def compute_duration_ce_loss(
             target[i, : dur[i]] = 1
         dur_pred = torch.sigmoid(pred).sum(dim=1)
         loss_dur += F.l1_loss(dur_pred[1 : length - 1], dur[1 : length - 1])
+        loss_dur += relativistic_loss(dur[1 : length - 1], dur_pred[1 : length - 1])
         loss_ce += F.binary_cross_entropy_with_logits(pred.flatten(), target.flatten())
     n = len(text_length)
     return loss_ce / n, loss_dur / n
