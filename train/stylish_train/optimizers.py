@@ -105,6 +105,14 @@ class MultiOptimizer:
                 self.schedulers[key].step()
 
 
+class MercifulAdamW(AdamW):
+    def load_state_dict(self, state_dict):
+        try:
+            return super().load_state_dict(state_dict)
+        except:
+            pass
+
+
 def build_optimizer(stage_name: str, *, train):
     optim = {}
     schedulers = {}
