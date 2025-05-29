@@ -118,7 +118,7 @@ def build_optimizer(stage_name: str, *, train):
     schedulers = {}
     for key in train.model.keys():
         lr, weight_decay, betas = calculate_lr(key, stage_name, train=train)
-        optim[key] = AdamW(
+        optim[key] = MercifulAdamW(
             train.model[key].parameters(),
             lr=lr,
             weight_decay=weight_decay,
