@@ -98,9 +98,9 @@ class BatchContext:
             batch.alignment,
             text_mask,
         )
-        prosody_embedding = prosody_embedding @ batch.alignment
+        pitch_energy_embedding = style_embedding @ batch.alignment
         self.pitch_prediction, self.energy_prediction = (
-            self.model.pitch_energy_predictor(prosody, prosody_embedding)
+            self.model.pitch_energy_predictor(prosody, pitch_energy_embedding)
         )
         pitch = self.calculate_pitch(batch, self.pitch_prediction)
         prediction = self.decoding(

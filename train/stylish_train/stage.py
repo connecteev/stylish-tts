@@ -92,6 +92,8 @@ stages = {
         train_fn=train_textual,
         validate_fn=validate_textual,
         train_models=[
+            "text_encoder",
+            "textual_style_encoder",
             "text_duration_encoder",
             "textual_prosody_encoder",
             "duration_predictor",
@@ -100,8 +102,6 @@ stages = {
         eval_models=[
             "decoder",
             "generator",
-            "text_encoder",
-            "textual_style_encoder",
         ],
         discriminators=["msbd"],
         inputs=[
