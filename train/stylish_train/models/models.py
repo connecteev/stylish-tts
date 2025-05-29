@@ -72,7 +72,7 @@ def build_model(model_config: ModelConfig):
     textual_prosody_encoder = FineStyleEncoder(
         model_config.inter_dim,
         model_config.style_dim,
-        model_config.style_encoder.layers,
+        2,
     )
     textual_style_encoder = FineStyleEncoder(
         model_config.inter_dim,
