@@ -141,6 +141,8 @@ def build_optimizer(stage_name: str, *, train):
 
 def calculate_lr(key, stage_name, *, train):
     lr = train.config.training_plan.get_stage(stage_name).lr
+    if stage_name == "textual" and key in ["text_encoder", "textual_style_encoder"]:
+        lr = lr / 10
     weight_decay = 1e-4
     betas = (0.85, 0.99)
     return lr, weight_decay, betas
