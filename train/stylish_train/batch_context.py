@@ -89,7 +89,7 @@ class BatchContext:
             batch.text, batch.text_length
         )
         style_embedding = self.textual_style_embedding(text_encoding)
-        prosody_embedding = self.textual_prosody_embedding(text_encoding)
+        prosody_embedding = self.textual_prosody_embedding(duration_encoding)
         text_mask = length_to_mask(batch.text_length).to(self.config.training.device)
         self.duration_prediction, prosody = self.model.duration_predictor(
             duration_encoding,
@@ -98,9 +98,10 @@ class BatchContext:
             batch.alignment,
             text_mask,
         )
-        prosody_embedding = prosody_embedding @ batch.alignment
         self.pitch_prediction, self.energy_prediction = (
-            self.model.pitch_energy_predictor(prosody, prosody_embedding)
+            self.model.pitch_energy_predictor(
+                prosody, style_embedding @ batch.alignment
+            )
         )
         pitch = self.calculate_pitch(batch, self.pitch_prediction)
         prediction = self.decoding(
