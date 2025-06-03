@@ -106,7 +106,7 @@ class BatchContext:
             batch.alignment,
             text_mask,
         )
-        _, pe = self.model.duration_predictor(
+        pe = self.model.pe_duration_predictor(
             pe_encoding,
             pe_embedding,
             batch.text_length,

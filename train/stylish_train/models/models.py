@@ -108,6 +108,7 @@ def build_model(model_config: ModelConfig):
         nlayers=model_config.duration_predictor.n_layer,
         max_dur=model_config.duration_predictor.max_dur,
         dropout=model_config.duration_predictor.dropout,
+        has_duration_proj=False,
     )
     nets = Munch(
         duration_predictor=duration_predictor,
