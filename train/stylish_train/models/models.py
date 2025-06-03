@@ -93,6 +93,22 @@ def build_model(model_config: ModelConfig):
         d_hid=model_config.inter_dim,
         dropout=model_config.pitch_energy_predictor.dropout,
     )
+
+    text_pe_encoder = TextEncoder(
+        inter_dim=model_config.inter_dim, config=model_config.text_encoder
+    )
+    textual_pe_encoder = FineStyleEncoder(
+        model_config.inter_dim,
+        model_config.style_dim,
+        model_config.style_encoder.layers,
+    )
+    pe_duration_predictor = DurationPredictor(
+        style_dim=model_config.style_dim,
+        d_hid=model_config.inter_dim,
+        nlayers=model_config.duration_predictor.n_layer,
+        max_dur=model_config.duration_predictor.max_dur,
+        dropout=model_config.duration_predictor.dropout,
+    )
     nets = Munch(
         duration_predictor=duration_predictor,
         pitch_energy_predictor=pitch_energy_predictor,
@@ -106,6 +122,9 @@ def build_model(model_config: ModelConfig):
         mpd=MultiPeriodDiscriminator(),
         msbd=MultiScaleSubbandCQTDiscriminator(sample_rate=model_config.sample_rate),
         mrd=MultiResolutionDiscriminator(),
+        text_pe_encoder=text_pe_encoder,
+        textual_pe_encoder=textual_pe_encoder,
+        pe_duration_predictor=pe_duration_predictor,
     )
 
     return nets
