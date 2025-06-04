@@ -208,7 +208,7 @@ class AdaLayerNorm(nn.Module):
 
     def forward(self, x, s):
         x = x.transpose(-1, -2)
-        x = x.transpose(1, -1)
+        # x = x.transpose(1, -1)
 
         s = rearrange(s, "b s t -> b t s")
         h = self.fc(s)
