@@ -199,7 +199,7 @@ class DurationEncoder(nn.Module):
             )
             x = self.proj_layers[i](x)
         x = x * x_mask
-        return x
+        return x.transpose(-1, -2)
 
 
 class AdaLayerNorm(nn.Module):
