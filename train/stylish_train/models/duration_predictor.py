@@ -167,7 +167,7 @@ class DurationEncoder(nn.Module):
                     hidden_channels, hidden_channels, n_heads, p_dropout=dropout
                 )
             )
-            self.norm_layers_1.append(AdaLayerNorm(self.sty_dim, hidden_channels))
+            self.norm_layers_1.append(AdaLayerNorm(sty_dim, hidden_channels))
             self.ffn_layers.append(
                 FFN(
                     hidden_channels,
@@ -177,7 +177,7 @@ class DurationEncoder(nn.Module):
                     p_dropout=dropout,
                 )
             )
-            self.norm_layers_2.append(AdaLayerNorm(self.sty_dim, hidden_channels))
+            self.norm_layers_2.append(AdaLayerNorm(sty_dim, hidden_channels))
             self.proj_layers.append(nn.Conv1d(hidden_channels, d_model, 1))
 
     def forward(self, x, style, x_mask):
