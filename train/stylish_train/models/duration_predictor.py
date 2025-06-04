@@ -53,7 +53,7 @@ class DurationPredictor(nn.Module):
     def forward(self, texts, style, text_lengths, alignment, mask):
         d = self.text_encoder(texts, style, text_lengths, mask)
         duration = self.duration_proj(d)
-        return duration.squeeze(-1)
+        return duration.squeeze(-1).transpose(-1, -2)
 
 
 class DurationEncoder(nn.Module):
