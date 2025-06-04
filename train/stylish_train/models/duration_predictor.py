@@ -48,11 +48,11 @@ class DurationPredictor(nn.Module):
         self.text_encoder = DurationEncoder(
             sty_dim=style_dim, d_model=d_hid, nlayers=nlayers, dropout=dropout
         )
-        self.duration_proj = LinearNorm(d_hid, max_dur)
+        self.duration_proj = LinearNorm(d_hid + style_dim, max_dur)
 
     def forward(self, texts, style, text_lengths, alignment, mask):
         d = self.text_encoder(texts, style, text_lengths, mask)
-        duration = self.duration_proj(d.transpose(-1, -2))
+        duration = self.duration_proj(d)
         return duration.squeeze(-1)
 
 
