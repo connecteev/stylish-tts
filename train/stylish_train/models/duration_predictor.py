@@ -48,43 +48,12 @@ class DurationPredictor(nn.Module):
         self.text_encoder = DurationEncoder(
             sty_dim=style_dim, d_model=d_hid, nlayers=nlayers, dropout=dropout
         )
-
-        self.lstm = nn.LSTM(
-            d_hid + style_dim, d_hid // 2, 1, batch_first=True, bidirectional=True
-        )
-        self.has_duration_proj = has_duration_proj
-        if self.has_duration_proj:
-            self.duration_proj = LinearNorm(d_hid, max_dur)
+        self.duration_proj = LinearNorm(d_hid, max_dur)
 
     def forward(self, texts, style, text_lengths, alignment, mask):
         d = self.text_encoder(texts, style, text_lengths, mask)
-
-        if self.has_duration_proj:
-            # predict duration
-            input_lengths = text_lengths.cpu()
-            x = nn.utils.rnn.pack_padded_sequence(
-                d, input_lengths, batch_first=True, enforce_sorted=False
-            )
-
-            mask = mask.to(text_lengths.device).unsqueeze(1)
-
-            self.lstm.flatten_parameters()
-            x, _ = self.lstm(x)
-            x, _ = nn.utils.rnn.pad_packed_sequence(x, batch_first=True)
-
-            x_pad = torch.zeros([x.shape[0], mask.shape[-1], x.shape[-1]])
-
-            x_pad[:, : x.shape[1], :] = x
-            x = x_pad.to(x.device)
-
-            duration = self.duration_proj(x)
-
-            en = d.transpose(-1, -2) @ alignment
-
-            return duration.squeeze(-1), en
-        else:
-            en = d.transpose(-1, -2) @ alignment
-            return en
+        duration = self.duration_proj(d)
+        return duration.squeeze(-1)
 
 
 class DurationEncoder(nn.Module):

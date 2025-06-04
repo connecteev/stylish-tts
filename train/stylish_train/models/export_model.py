@@ -13,7 +13,7 @@ class ExportModel(torch.nn.Module):
         textual_pe_encoder,
         duration_predictor,
         pitch_energy_predictor,
-        pe_duration_predictor,
+        pe_duration_encoder,
         decoder,
         generator,
         device="cuda",
@@ -30,7 +30,7 @@ class ExportModel(torch.nn.Module):
             textual_pe_encoder,
             duration_predictor,
             pitch_energy_predictor,
-            pe_duration_predictor,
+            pe_duration_encoder,
             decoder,
             generator,
         ]:
@@ -47,7 +47,7 @@ class ExportModel(torch.nn.Module):
         self.textual_pe_encoder = textual_pe_encoder
         self.duration_predictor = duration_predictor
         self.pitch_energy_predictor = pitch_energy_predictor
-        self.pe_duration_predictor = pe_duration_predictor
+        self.pe_duration_encoder = pe_duration_encoder
         self.decoder = decoder
         self.generator = generator
 
@@ -88,7 +88,7 @@ class ExportModel(torch.nn.Module):
         return pred_aln_trg, prosody
 
     def pe_predict(self, pe_encoding, pe_embedding, pred_aln_trg):
-        d = self.pe_duration_predictor.text_encoder.infer(pe_encoding, pe_embedding)
+        d = self.pe_duration_encoder.text_encoder.infer(pe_encoding, pe_embedding)
         pe = d.permute(0, 2, 1) @ pred_aln_trg
         return pe
 

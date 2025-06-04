@@ -94,7 +94,7 @@ stages = {
         train_models=[
             "text_pe_encoder",
             "textual_pe_encoder",
-            "pe_duration_predictor",
+            "pe_duration_encoder",
             "text_duration_encoder",
             "textual_prosody_encoder",
             "duration_predictor",
