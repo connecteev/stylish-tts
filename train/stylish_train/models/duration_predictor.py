@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from .common import LinearNorm
-from .text_encoder import FFN, MultiHeadAttention
+from .text_encoder import FFN, MultiHeadAttention, sequence_mask
 
 
 # class DurationPredictor(nn.Module):
@@ -51,8 +51,8 @@ class DurationPredictor(nn.Module):
         )
         self.duration_proj = LinearNorm(d_hid + style_dim, max_dur)
 
-    def forward(self, texts, style, text_lengths, alignment, mask):
-        d = self.text_encoder(texts, style, text_lengths, mask)
+    def forward(self, texts, style, text_lengths):
+        d = self.text_encoder(texts, style, text_lengths)
         duration = self.duration_proj(d)
         return duration.squeeze(-1)
 
@@ -180,7 +180,8 @@ class DurationEncoder(nn.Module):
             self.norm_layers_2.append(AdaLayerNorm(sty_dim, hidden_channels))
             self.proj_layers.append(nn.Conv1d(hidden_channels, d_model, 1))
 
-    def forward(self, x, style, x_mask):
+    def forward(self, x, style, x_lengths):
+        x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
         attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
         for i in range(self.n_layers):
             x = torch.cat([x, style], dim=1)

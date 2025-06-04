@@ -103,14 +103,11 @@ class BatchContext:
             duration_encoding,
             prosody_embedding,
             batch.text_length,
-            batch.alignment,
-            text_mask,
         )
         pe = self.model.pe_duration_encoder(
             pe_encoding,
             pe_embedding,
             batch.text_length,
-            text_mask,
         )
         self.pitch_prediction, self.energy_prediction = (
             self.model.pitch_energy_predictor(
