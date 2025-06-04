@@ -110,7 +110,6 @@ class BatchContext:
             pe_encoding,
             pe_embedding,
             batch.text_length,
-            batch.alignment,
             text_mask,
         )
         self.pitch_prediction, self.energy_prediction = (
