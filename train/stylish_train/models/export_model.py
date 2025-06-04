@@ -87,6 +87,11 @@ class ExportModel(torch.nn.Module):
         prosody = d.permute(0, 2, 1) @ pred_aln_trg
         return pred_aln_trg, prosody
 
+    def pe_predict(self, pe_encoding, pe_embedding, pred_aln_trg):
+        d = self.pe_duration_predictor.text_encoder.infer(pe_encoding, pe_embedding)
+        pe = d.permute(0, 2, 1) @ pred_aln_trg
+        return pe
+
     def forward(self, texts, text_lengths):
         text_encoding, _, _ = self.text_encoder(texts, text_lengths)
         duration_encoding, _, _ = self.text_duration_encoder(texts, text_lengths)
@@ -98,9 +103,10 @@ class ExportModel(torch.nn.Module):
             duration_encoding,
             prosody_embedding,
         )
-        pe = self.pe_duration_predictor(
+        pe = self.pe_predict(
             pe_encoding,
             pe_embedding,
+            duration_prediction,
         )
         pitch_prediction, energy_prediction = self.pitch_energy_predictor(
             pe, pe_embedding @ duration_prediction
