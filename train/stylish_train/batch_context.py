@@ -113,7 +113,9 @@ class BatchContext:
             text_mask,
         )
         self.pitch_prediction, self.energy_prediction = (
-            self.model.pitch_energy_predictor(pe, pe_embedding @ batch.alignment)
+            self.model.pitch_energy_predictor(
+                pe.transpose(-1, -2), pe_embedding @ batch.alignment
+            )
         )
         pitch = self.calculate_pitch(batch, self.pitch_prediction)
         prediction = self.decoding(
