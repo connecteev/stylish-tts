@@ -188,11 +188,15 @@ class DurationEncoder(nn.Module):
             x = x * x_mask
             y = self.attn_layers[i](x, x, attn_mask)
             y = self.drop(y)
-            x = self.norm_layers_1[i](x + y, style)
+            x = self.norm_layers_1[i](torch.transpose(x + y, -1, -2), style).transpose(
+                -1, -2
+            )
 
             y = self.ffn_layers[i](x, x_mask)
             y = self.drop(y)
-            x = self.norm_layers_2[i](x + y, style)
+            x = self.norm_layers_1[i](torch.transpose(x + y, -1, -2), style).transpose(
+                -1, -2
+            )
             x = self.proj_layers[i](x)
         x = x * x_mask
         return x
@@ -208,7 +212,7 @@ class AdaLayerNorm(nn.Module):
 
     def forward(self, x, s):
         x = x.transpose(-1, -2)
-        # x = x.transpose(1, -1)
+        x = x.transpose(1, -1)
 
         s = rearrange(s, "b s t -> b t s")
         h = self.fc(s)
