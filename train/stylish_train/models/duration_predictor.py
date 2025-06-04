@@ -198,6 +198,7 @@ class DurationEncoder(nn.Module):
                 -1, -2
             )
             x = self.proj_layers[i](x)
+        x = torch.cat([x, style], dim=1)
         x = x * x_mask
         return x.transpose(-1, -2)
 
