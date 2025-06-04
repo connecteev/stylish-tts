@@ -183,8 +183,8 @@ class DurationEncoder(nn.Module):
     def forward(self, x, style, x_lengths):
         x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
         attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
+        x = torch.cat([x, style], dim=1)
         for i in range(self.n_layers):
-            x = torch.cat([x, style], dim=1)
             x = x * x_mask
             y = self.attn_layers[i](x, x, attn_mask)
             y = self.drop(y)
@@ -198,7 +198,7 @@ class DurationEncoder(nn.Module):
                 -1, -2
             )
             x = self.proj_layers[i](x)
-        x = torch.cat([x, style], dim=1)
+            x = torch.cat([x, style], dim=1)
         x = x * x_mask
         return x.transpose(-1, -2)
 
