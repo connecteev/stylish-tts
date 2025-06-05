@@ -106,7 +106,7 @@ stages = {
             "decoder",
             "generator",
         ],
-        discriminators=[],
+        discriminators=["msbd"],
         inputs=[
             "text",
             "text_length",
