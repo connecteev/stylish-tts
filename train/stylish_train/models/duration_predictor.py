@@ -194,7 +194,7 @@ class DurationEncoder(nn.Module):
 
             y = self.ffn_layers[i](x, x_mask)
             y = self.drop(y)
-            x = self.norm_layers_1[i](torch.transpose(x + y, -1, -2), style).transpose(
+            x = self.norm_layers_2[i](torch.transpose(x + y, -1, -2), style).transpose(
                 -1, -2
             )
             x = self.proj_layers[i](x)
