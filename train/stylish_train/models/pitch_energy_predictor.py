@@ -39,13 +39,15 @@ class PitchEnergyPredictor(torch.nn.Module):
         self.F0_proj = nn.Conv1d(d_hid // 2, 1, 1, 1, 0)
         self.N_proj = nn.Conv1d(d_hid // 2, 1, 1, 1, 0)
 
-    def forward(self, prosody, style):
-        upstyle = torch.nn.functional.interpolate(style, scale_factor=2, mode="nearest")
+    def forward(self, prosody, pitch_style, energy_style):
         # x = torch.cat([prosody, style], dim=1)
         x = prosody
         x, _ = self.shared(x.transpose(-1, -2))
 
-        s = style
+        s = pitch_style
+        upstyle = torch.nn.functional.interpolate(
+            pitch_style, scale_factor=2, mode="nearest"
+        )
         F0 = x.transpose(-1, -2)
         for block in self.F0:
             F0 = block(F0, s)
@@ -53,7 +55,10 @@ class PitchEnergyPredictor(torch.nn.Module):
                 s = upstyle
         F0 = self.F0_proj(F0)
 
-        s = style
+        s = energy_style
+        upstyle = torch.nn.functional.interpolate(
+            energy_style, scale_factor=2, mode="nearest"
+        )
         N = x.transpose(-1, -2)
         for block in self.N:
             N = block(N, s)

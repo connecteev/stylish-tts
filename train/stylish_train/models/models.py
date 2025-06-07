@@ -65,42 +65,51 @@ def build_model(model_config: ModelConfig):
     text_encoder = TextEncoder(
         inter_dim=model_config.inter_dim, config=model_config.text_encoder
     )
-    text_duration_encoder = TextEncoder(
-        inter_dim=model_config.inter_dim, config=model_config.text_encoder
-    )
-
-    textual_prosody_encoder = FineStyleEncoder(
-        model_config.inter_dim,
-        model_config.style_dim,
-        model_config.style_encoder.layers,
-    )
     textual_style_encoder = FineStyleEncoder(
         model_config.inter_dim,
         model_config.style_dim,
         model_config.style_encoder.layers,
     )
 
+    # TODO Fix hardcoded values
     duration_predictor = DurationPredictor(
         style_dim=model_config.style_dim,
         d_hid=model_config.inter_dim,
         nlayers=model_config.duration_predictor.n_layer,
         max_dur=model_config.duration_predictor.max_dur,
         dropout=model_config.duration_predictor.dropout,
+        text_encoder_config=model_config.text_encoder,
+        style_layers=model_config.style_encoder.layers,
+        conv_layers=1,
     )
-
-    pitch_energy_predictor = PitchEnergyPredictor(
+    pitch_predictor = DurationPredictor(
         style_dim=model_config.style_dim,
         d_hid=model_config.inter_dim,
-        dropout=model_config.pitch_energy_predictor.dropout,
+        nlayers=model_config.duration_predictor.n_layer,
+        max_dur=model_config.duration_predictor.max_dur,
+        dropout=model_config.duration_predictor.dropout,
+        text_encoder_config=model_config.text_encoder,
+        style_layers=model_config.style_encoder.layers,
+        conv_layers=3,
     )
+    energy_predictor = DurationPredictor(
+        style_dim=model_config.style_dim,
+        d_hid=model_config.inter_dim,
+        nlayers=model_config.duration_predictor.n_layer,
+        max_dur=model_config.duration_predictor.max_dur,
+        dropout=model_config.duration_predictor.dropout,
+        text_encoder_config=model_config.text_encoder,
+        style_layers=model_config.style_encoder.layers,
+        conv_layers=1,
+    )
+
     nets = Munch(
         duration_predictor=duration_predictor,
-        pitch_energy_predictor=pitch_energy_predictor,
+        pitch_predictor=pitch_predictor,
+        energy_predictor=energy_predictor,
         decoder=decoder,
         generator=generator,
         text_encoder=text_encoder,
-        text_duration_encoder=text_duration_encoder,
-        textual_prosody_encoder=textual_prosody_encoder,
         textual_style_encoder=textual_style_encoder,
         text_aligner=text_aligner,
         mpd=MultiPeriodDiscriminator(),

@@ -9,6 +9,8 @@ class ExportModel(torch.nn.Module):
         text_duration_encoder,
         textual_style_encoder,
         textual_prosody_encoder,
+        textual_pitch_encoder,
+        textual_energy_encoder,
         duration_predictor,
         pitch_energy_predictor,
         decoder,
@@ -23,6 +25,8 @@ class ExportModel(torch.nn.Module):
             text_duration_encoder,
             textual_style_encoder,
             textual_prosody_encoder,
+            textual_pitch_encoder,
+            textual_energy_encoder,
             duration_predictor,
             pitch_energy_predictor,
             decoder,
@@ -37,6 +41,8 @@ class ExportModel(torch.nn.Module):
         self.text_duration_encoder = text_duration_encoder
         self.textual_style_encoder = textual_style_encoder
         self.textual_prosody_encoder = textual_prosody_encoder
+        self.textual_pitch_encoder = textual_pitch_encoder
+        self.textual_energy_encoder = textual_energy_encoder
         self.duration_predictor = duration_predictor
         self.pitch_energy_predictor = pitch_energy_predictor
         self.decoder = decoder
@@ -63,9 +69,11 @@ class ExportModel(torch.nn.Module):
         )
         x, _ = self.duration_predictor.lstm(d)
         duration = self.duration_predictor.duration_proj(x)
-        duration = torch.sigmoid(duration).sum(axis=-1)
+        # duration = torch.sigmoid(duration).sum(axis=-1)
+        duration = torch.exp(duration)
 
         pred_dur = torch.round(duration).clamp(min=1).long().squeeze()
+        # pred_dur = torch.ceil(duration).long().squeeze()
         indices = torch.repeat_interleave(
             torch.arange(duration_encoding.shape[2], device=self.device), pred_dur
         )
@@ -87,9 +95,15 @@ class ExportModel(torch.nn.Module):
             duration_encoding,
             prosody_embedding,
         )
-        prosody_embedding = prosody_embedding @ duration_prediction
+        pitch_embedding = (
+            self.textual_pitch_encoder(duration_encoding) @ duration_prediction
+        )
+        energy_embedding = (
+            self.textual_energy_encoder(duration_encoding) @ duration_prediction
+        )
+        # prosody_embedding = prosody_embedding @ duration_prediction
         pitch_prediction, energy_prediction = self.pitch_energy_predictor(
-            prosody, prosody_embedding
+            prosody, pitch_embedding, energy_embedding
         )
         prediction = self.decoding_single(
             text_encoding,

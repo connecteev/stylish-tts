@@ -6,7 +6,7 @@ from einops import rearrange
 
 from batch_context import BatchContext
 from loss_log import build_loss_log
-from losses import compute_duration_ce_loss
+from losses import compute_duration_ce_loss, duration_loss
 from utils import length_to_mask
 
 
@@ -63,11 +63,20 @@ def validate_textual(batch, train):
     log.add_loss(
         "energy", torch.nn.functional.smooth_l1_loss(energy, state.energy_prediction)
     )
-    loss_ce, loss_dur = compute_duration_ce_loss(
-        state.duration_prediction,
-        batch.alignment.sum(dim=-1),
-        batch.text_length,
+    # loss_ce, loss_dur = compute_duration_ce_loss(
+    #     state.duration_prediction,
+    #     batch.alignment.sum(dim=-1),
+    #     batch.text_length,
+    # )
+    # log.add_loss("duration_ce", loss_ce)
+    # log.add_loss("duration", loss_dur)
+    log.add_loss(
+        "duration",
+        duration_loss(
+            pred=state.duration_prediction,
+            gt_attn=batch.alignment,
+            lengths=batch.text_length,
+            mask=length_to_mask(batch.text_length),
+        ),
     )
-    log.add_loss("duration_ce", loss_ce)
-    log.add_loss("duration", loss_dur)
     return log, batch.alignment[0], pred.audio, batch.audio_gt

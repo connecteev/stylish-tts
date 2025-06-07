@@ -1,6 +1,8 @@
 from typing import List, Optional
 import torch
+from torch import nn
 from torch.nn.utils.parametrizations import weight_norm
+from einops import rearrange
 
 from .common import get_padding, init_weights, leaky_clamp, InstanceNorm1d
 
@@ -63,18 +65,34 @@ class ConvNeXtBlock(torch.nn.Module):
         return x + x_in
 
 
-class AdaNorm1d(torch.nn.Module):
+class AdaNorm1d(nn.Module):
     def __init__(self, style_dim, num_features):
         super().__init__()
         self.norm = InstanceNorm1d(num_features, affine=False)
-        self.fc = torch.nn.Linear(style_dim, num_features * 2)
+        self.fc = nn.Linear(style_dim, num_features * 2)
+        self.num_features = num_features
 
     def forward(self, x, s):
+        s = rearrange(s, "b s t -> b t s")
         h = self.fc(s)
-        h = h.view(h.size(0), h.size(1), 1)
-        gamma, beta = torch.chunk(h, chunks=2, dim=1)
-        result = (1 + gamma) * self.norm(leaky_clamp(x, -1e10, 1e10)) + beta
-        return result
+        h = rearrange(h, "b t s -> b s t")
+        gamma = h[:, : self.num_features, :]
+        beta = h[:, self.num_features :, :]
+        return (1 + gamma) * self.norm(x) + beta
+
+
+# class AdaNorm1d(torch.nn.Module):
+#     def __init__(self, style_dim, num_features):
+#         super().__init__()
+#         self.norm = InstanceNorm1d(num_features, affine=False)
+#         self.fc = torch.nn.Linear(style_dim, num_features * 2)
+#
+#     def forward(self, x, s):
+#         h = self.fc(s)
+#         h = h.view(h.size(0), h.size(1), 1)
+#         gamma, beta = torch.chunk(h, chunks=2, dim=1)
+#         result = (1 + gamma) * self.norm(leaky_clamp(x, -1e10, 1e10)) + beta
+#         return result
 
 
 class AdaResBlock(torch.nn.Module):
