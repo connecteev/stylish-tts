@@ -98,7 +98,6 @@ class BatchContext:
         style_embedding = self.textual_style_embedding(text_encoding)
         prosody_embedding = self.textual_prosody_embedding(duration_encoding)
         pe_embedding = self.textual_pe_embedding(pe_encoding)
-        text_mask = length_to_mask(batch.text_length).to(self.config.training.device)
         self.duration_prediction = self.model.duration_predictor(
             duration_encoding,
             prosody_embedding,
