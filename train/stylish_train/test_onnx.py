@@ -1,7 +1,4 @@
 import torch
-import sys
-
-sys.path.insert(0, "D:\\stylish-tts\\lib")
 from stylish_lib.config_loader import ModelConfig
 from stylish_lib.text_utils import TextCleaner
 import torch
