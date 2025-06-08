@@ -111,7 +111,8 @@ class ExportModel(torch.nn.Module):
             text_lengths,
         )
         pitch_prediction, energy_prediction = self.pitch_energy_predictor(
-            pe.transpose(-1, -2), pe_embedding @ duration_prediction
+            pe.transpose(-1, -2) @ duration_prediction,
+            pe_embedding @ duration_prediction,
         )
         prediction = self.decoding_single(
             text_encoding,
