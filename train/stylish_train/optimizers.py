@@ -105,20 +105,12 @@ class MultiOptimizer:
                 self.schedulers[key].step()
 
 
-class MercifulAdamW(AdamW):
-    def load_state_dict(self, state_dict):
-        try:
-            return super().load_state_dict(state_dict)
-        except:
-            pass
-
-
 def build_optimizer(stage_name: str, *, train):
     optim = {}
     schedulers = {}
     for key in train.model.keys():
         lr, weight_decay, betas = calculate_lr(key, stage_name, train=train)
-        optim[key] = MercifulAdamW(
+        optim[key] = AdamW(
             train.model[key].parameters(),
             lr=lr,
             weight_decay=weight_decay,
