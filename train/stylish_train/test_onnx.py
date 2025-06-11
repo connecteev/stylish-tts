@@ -8,6 +8,7 @@ import onnxruntime as ort
 import click
 from scipy.io.wavfile import write
 import onnx
+from time import perf_counter
 
 
 def read_meta_data_onnx(filename, key):
@@ -36,6 +37,7 @@ def main(onnx_path, text, combine):
     )
     samples = []
 
+    start = perf_counter()
     for i, text in enumerate(texts):
         tokens = torch.tensor(text_cleaner(text)).unsqueeze(0)
         texts = torch.zeros([1, tokens.shape[1] + 2], dtype=int)
@@ -64,6 +66,8 @@ def main(onnx_path, text, combine):
             outfile = f"sample_{i}.wav"
             print("Saving to:", outfile)
             write(outfile, 24000, sample)
+    time = perf_counter() - start
+    print(f"{time}s, RTF {time/(combined.shape[0] / 24000)}")
 
 
 if __name__ == "__main__":
