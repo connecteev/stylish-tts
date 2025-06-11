@@ -375,7 +375,6 @@ class Encoder(nn.Module):
 class TextEncoder(nn.Module):
     def __init__(
         self,
-        *,
         inter_dim,
         config,
     ):

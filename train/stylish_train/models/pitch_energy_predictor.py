@@ -5,6 +5,7 @@ from torch.nn import functional as F
 from torch.nn.utils import weight_norm
 from einops import rearrange
 from .common import InstanceNorm1d
+from .text_feature_extractor import TextFeatureExtractor
 
 
 class PitchEnergyPredictor(torch.nn.Module):
@@ -39,11 +40,9 @@ class PitchEnergyPredictor(torch.nn.Module):
         self.F0_proj = nn.Conv1d(d_hid // 2, 1, 1, 1, 0)
         self.N_proj = nn.Conv1d(d_hid // 2, 1, 1, 1, 0)
 
-    def forward(self, prosody, style):
+    def forward(self, spectral, style):
         upstyle = torch.nn.functional.interpolate(style, scale_factor=2, mode="nearest")
-        # x = torch.cat([prosody, style], dim=1)
-        x = prosody
-        x, _ = self.shared(x.transpose(-1, -2))
+        x, _ = self.shared(spectral.transpose(-1, -2))
 
         s = style
         F0 = x.transpose(-1, -2)

@@ -15,6 +15,8 @@ import random
 from scipy.signal import get_window
 from utils import DecoderPrediction, clamped_exp, leaky_clamp
 from .common import InstanceNorm1d
+from .decoder import Decoder
+from .text_feature_extractor import TextFeatureExtractor
 
 
 import numpy as np
@@ -82,8 +84,10 @@ class RingformerGenerator(torch.nn.Module):
         gen_istft_n_fft,
         gen_istft_hop_size,
         sample_rate,
+        mel_decoder: Decoder,
     ):
         super(RingformerGenerator, self).__init__()
+        self.mel_decoder = mel_decoder
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
         self.gen_istft_n_fft = gen_istft_n_fft
@@ -176,10 +180,9 @@ class RingformerGenerator(torch.nn.Module):
             win_length=self.gen_istft_n_fft,
         )
 
-    def forward(self, mel, style, pitch, energy):
+    def forward(self, x, style, pitch, energy):
         # x: [b,d,t]
-        x = mel
-        f0 = pitch
+        x, f0 = self.mel_decoder(asr=x, F0_curve=pitch, N=energy, s=style)
         s = style
         with torch.no_grad():
             f0 = self.f0_upsamp(f0[:, None]).transpose(1, 2)  # bs,n,t

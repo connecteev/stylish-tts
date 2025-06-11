@@ -40,10 +40,15 @@ text_encoder:
 style_encoder:
   layers: 4
 
+feature_encoder:
+  layers: 3
+  dropout: 0.1
+  heads: 2
+  kernel_size: 1
+
 duration_predictor:
-  n_layer: 3
   max_dur: 50 # maximum duration of a single phoneme
-  dropout: 0.2
+
 
 pitch_energy_predictor:
   dropout: 0.2

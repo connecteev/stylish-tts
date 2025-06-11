@@ -144,8 +144,8 @@ class BatchManager:
             else:
                 total_used_time += self.time_per_bin.get(int(key), 0.0)
         train.logger.info(
-                            f"Training on {total_used_time/3600:.2f}h of audio, skipping {total_skipped_time/3600:.2f}h of audio due to OOM"
-                        )
+            f"Training on {total_used_time/3600:.2f}h of audio, skipping {total_skipped_time/3600:.2f}h of audio due to OOM"
+        )
         train.stage.save_batch_sizes()
         iterator.close()
 
@@ -223,5 +223,5 @@ class BatchManager:
         )
         step_limit = train.stage.max_epoch * train.manifest.steps_per_epoch
         train.stage.optimizer.scheduler(step, step_limit, train.manifest.stage)
-        train.stage.optimizer.step_discriminator_schedulers()
+        train.stage.optimizer.step_discriminator_schedulers(self.stage)
         return result

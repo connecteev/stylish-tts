@@ -212,14 +212,23 @@ class StyleEncoderConfig(BaseModel):
     layers: int = Field(..., description="Number of convnext blocks to use")
 
 
+class AdaptiveFeatureEncoderConfig(BaseModel):
+    """
+    Adaptive style encoder configuration parameters.
+    """
+
+    layers: int = Field(..., description="Number of transformer encoder blocks.")
+    dropout: float = Field(..., description="Dropout rate for feature encoder.")
+    heads: int = Field(..., description="Number of attention heads")
+    kernel_size: int = Field(...)
+
+
 class DurationPredictorConfig(BaseModel):
     """
     Prosody predictor configuration parameters.
     """
 
-    n_layer: int = Field(..., description="Number of layers in the prosody predictor.")
     max_dur: int = Field(..., description="Maximum duration of a single phoneme.")
-    dropout: float = Field(..., description="Dropout rate for the prosody predictor.")
 
 
 class PitchEnergyPredictorConfig(BaseModel):
@@ -293,6 +302,9 @@ class ModelConfig(BaseModel):
     )
     style_encoder: StyleEncoderConfig = Field(
         ..., description="Style encoder configuration parameters."
+    )
+    feature_encoder: AdaptiveFeatureEncoderConfig = Field(
+        ..., description="Shared feature encoder configuration parameters for feature."
     )
     duration_predictor: DurationPredictorConfig = Field(
         ..., description="Duration predictor configuration parameters."
