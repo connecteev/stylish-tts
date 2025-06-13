@@ -21,7 +21,7 @@ def validate_alignment(batch, train):
         ctc, batch.text, batch.mel_length // 2, batch.text_length, step_type="eval"
     )
 
-    blank = train.model_config.text_encoder.tokens
+    blank = train.model_config.tokens
     logprobs = rearrange(ctc, "t b k -> b t k")
     confidence_total = 0.0
     confidence_count = 0

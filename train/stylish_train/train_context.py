@@ -96,7 +96,7 @@ class TrainContext:
             sample_rate=self.model_config.sample_rate
         ).to(self.config.training.device)
         self.align_loss: CTCLossWithLabelPriors = CTCLossWithLabelPriors(
-            prior_scaling_factor=0.3, blank=model_config.text_encoder.tokens
+            prior_scaling_factor=0.3, blank=model_config.tokens
         )
         self.magphase_loss: MagPhaseLoss = MagPhaseLoss(
             n_fft=self.model_config.generator.gen_istft_n_fft,
