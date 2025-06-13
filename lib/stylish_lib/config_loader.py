@@ -195,7 +195,6 @@ class TextEncoderConfig(BaseModel):
     Text encoder configuration parameters.
     """
 
-    tokens: int = Field(..., description="Number of phoneme tokens.")
     hidden_dim: int = Field(..., description="Hidden dimension")
     filter_channels: int = Field(..., description="Filter Channel for encoder")
     heads: int = Field(..., description="Number of attention heads")
@@ -222,6 +221,24 @@ class AdaptiveFeatureEncoderConfig(BaseModel):
     heads: int = Field(..., description="Number of attention heads")
     kernel_size: int = Field(...)
 
+class TextFeatureExtractorConfig(BaseModel):
+    """
+    Text feature extractor configuration parameters.
+    """
+
+    style_dim: int = Field(..., description="Dimension of the style vector.")
+    inter_dim: int = Field(
+        ..., description="Dimension of the embedding used between models."
+    )
+    text_encoder: TextEncoderConfig = Field(
+        ..., description="Text encoder configuration parameters."
+    )
+    style_encoder: StyleEncoderConfig = Field(
+        ..., description="Style encoder configuration parameters."
+    )
+    feature_encoder: AdaptiveFeatureEncoderConfig = Field(
+        ..., description="Shared feature encoder configuration parameters for feature."
+    )
 
 class DurationPredictorConfig(BaseModel):
     """
@@ -285,11 +302,8 @@ class ModelConfig(BaseModel):
         ..., description="Window length for spectrogram computation."
     )
     hop_length: int = Field(..., description="Hop length for spectrogram computation.")
-    style_dim: int = Field(..., description="Dimension of the style vector.")
-    inter_dim: int = Field(
-        ..., description="Dimension of the embedding used between models."
-    )
-
+    tokens: int = Field(..., description="Number of phoneme tokens.")
+    
     text_aligner: TextAlignerConfig = Field(
         ..., description="Configuration for the text aligner component."
     )
@@ -297,15 +311,9 @@ class ModelConfig(BaseModel):
     generator: Union[RingformerGeneratorConfig,] = Field(
         ..., description="Generator (vocoder) configuration parameters."
     )
-    text_encoder: TextEncoderConfig = Field(
-        ..., description="Text encoder configuration parameters."
-    )
-    style_encoder: StyleEncoderConfig = Field(
-        ..., description="Style encoder configuration parameters."
-    )
-    feature_encoder: AdaptiveFeatureEncoderConfig = Field(
-        ..., description="Shared feature encoder configuration parameters for feature."
-    )
+    text_acoustic_extractor: TextFeatureExtractorConfig = Field(..., description="Configuration for acoustic branch extractor.")
+    text_duration_extractor: TextFeatureExtractorConfig = Field(..., description="Configuration for duration branch extractor.")
+    text_spectral_extractor: TextFeatureExtractorConfig = Field(..., description="Configuration for spectral branch extractor.")
     duration_predictor: DurationPredictorConfig = Field(
         ..., description="Duration predictor configuration parameters."
     )

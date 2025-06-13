@@ -375,6 +375,7 @@ class Encoder(nn.Module):
 class TextEncoder(nn.Module):
     def __init__(
         self,
+        tokens,
         inter_dim,
         config,
     ):
@@ -383,7 +384,7 @@ class TextEncoder(nn.Module):
         self.n_spks = 1
         self.n_channels = config.hidden_dim
 
-        self.emb = torch.nn.Embedding(config.tokens, self.n_channels)
+        self.emb = torch.nn.Embedding(tokens, self.n_channels)
         torch.nn.init.normal_(self.emb.weight, 0.0, self.n_channels**-0.5)
 
         self.prenet = ConvReluNorm(

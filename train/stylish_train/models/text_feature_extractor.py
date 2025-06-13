@@ -14,6 +14,7 @@ from einops import rearrange
 class TextFeatureExtractor(nn.Module):
     def __init__(
         self,
+        tokens,
         inter_dim,
         style_dim,
         text_encoder_config: TextEncoderConfig,
@@ -23,7 +24,7 @@ class TextFeatureExtractor(nn.Module):
     ):
         super().__init__()
         self.encode_feature = encode_feature
-        self.text_encoder = TextEncoder(inter_dim, config=text_encoder_config)
+        self.text_encoder = TextEncoder(tokens, inter_dim, config=text_encoder_config)
         self.style_encoder = FineStyleEncoder(
             inter_dim, style_dim, style_encoder_config.layers
         )
