@@ -49,10 +49,13 @@ class MultiOptimizer:
                     group["initial_lr"] for group in self.optimizers[key].param_groups
                 ]
                 self.schedulers[key].step()
-        self.reset_discriminator_schedulers()
+        self.reset_discriminator_schedulers(stage_name)
 
-    def step_discriminator_schedulers(self):
-        gen_lr = self.optimizers["decoder"].param_groups[0]["lr"]
+    def step_discriminator_schedulers(self, stage_name):
+        if stage_name == "acoustic":
+            gen_lr = self.optimizers["text_acoustic_extractor"].param_groups[0]["lr"]
+        else:
+            gen_lr = self.optimizers["text_duration_extractor"].param_groups[0]["lr"]
         if isinstance(gen_lr, torch.Tensor):
             gen_lr = gen_lr.item()
         for key in discriminators:
@@ -64,8 +67,11 @@ class MultiOptimizer:
                 else:
                     param_group["lr"] = lr
 
-    def reset_discriminator_schedulers(self):
-        lr = self.optimizers["decoder"].param_groups[0]["lr"]
+    def reset_discriminator_schedulers(self, stage_name):
+        if stage_name == "acoustic":
+            lr = self.optimizers["text_acoustic_extractor"].param_groups[0]["lr"]
+        else:
+            lr = self.optimizers["text_duration_extractor"].param_groups[0]["lr"]
         if isinstance(lr, torch.Tensor):
             lr = lr.item()
         for key in discriminators:

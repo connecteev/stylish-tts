@@ -145,7 +145,7 @@ class Decoder(nn.Module):
             weight_norm(nn.Conv1d(dim_in, residual_dim, kernel_size=1)),
         )
 
-    def forward(self, asr, F0_curve, N, s, probing=False):
+    def forward(self, asr, F0_curve, N, s):
         F0_down = 3
         N_down = 3
         if F0_down:
