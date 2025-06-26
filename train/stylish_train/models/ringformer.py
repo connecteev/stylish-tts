@@ -70,87 +70,37 @@ def padDiff(x):
     )
 
 
-class RingformerGenerator(torch.nn.Module):
+class MagphaseModel(torch.nn.Module):
     def __init__(
         self,
+        *,
         style_dim,
         resblock_kernel_sizes,
         upsample_rates,
         upsample_initial_channel,
         resblock_dilation_sizes,
         upsample_kernel_sizes,
-        gen_istft_n_fft,
-        gen_istft_hop_size,
         sample_rate,
+        gen_istft_n_fft
     ):
-        super(RingformerGenerator, self).__init__()
-        self.num_kernels = len(resblock_kernel_sizes)
-        self.num_upsamples = len(upsample_rates)
-        self.gen_istft_n_fft = gen_istft_n_fft
-        self.gen_istft_hop_size = gen_istft_hop_size
+        super(MagphaseModel, self).__init__()
         resblock = AdaINResBlock1
 
-        self.m_source = SourceModuleHnNSF(
-            sampling_rate=sample_rate,
-            upsample_scale=math.prod(upsample_rates) * gen_istft_hop_size,
-            harmonic_num=8,
-            voiced_threshod=10,
-        )
-        self.f0_upsamp = torch.nn.Upsample(
-            scale_factor=math.prod(upsample_rates) * gen_istft_hop_size
-        )
+        self.num_upsamples = len(upsample_rates)
+        self.upsample_rates = upsample_rates
+        self.num_kernels = len(resblock_kernel_sizes)
+
         self.noise_convs = nn.ModuleList()
         self.noise_res = nn.ModuleList()
-
-        self.ups = nn.ModuleList()
-        for i, (u, k) in enumerate(zip(upsample_rates, upsample_kernel_sizes)):
-            self.ups.append(
-                weight_norm(
-                    ConvTranspose1d(
-                        upsample_initial_channel // (2**i),
-                        upsample_initial_channel // (2 ** (i + 1)),
-                        k,
-                        u,
-                        padding=(k - u) // 2,
-                    )
-                )
-            )
 
         self.alphas = nn.ParameterList()
         self.alphas.append(nn.Parameter(torch.ones(1, upsample_initial_channel, 1)))
         self.resblocks = nn.ModuleList()
-        for i in range(len(self.ups)):
-            ch = upsample_initial_channel // (2 ** (i + 1))
-            self.alphas.append(nn.Parameter(torch.ones(1, ch, 1)))
-            for j, (k, d) in enumerate(
-                zip(resblock_kernel_sizes, resblock_dilation_sizes)
-            ):
-                self.resblocks.append(resblock(ch, k, d, style_dim))
-            c_cur = upsample_initial_channel // (2 ** (i + 1))
-
-            if i + 1 < len(upsample_rates):  #
-                stride_f0 = math.prod(upsample_rates[i + 1 :])
-                self.noise_convs.append(
-                    Conv1d(
-                        gen_istft_n_fft + 2,
-                        c_cur,
-                        kernel_size=stride_f0 * 2,
-                        stride=stride_f0,
-                        padding=(stride_f0 + 1) // 2,
-                    )
-                )
-                self.noise_res.append(resblock(c_cur, 7, [1, 3, 5], style_dim))
-            else:
-                self.noise_convs.append(
-                    Conv1d(gen_istft_n_fft + 2, c_cur, kernel_size=1)
-                )
-                self.noise_res.append(resblock(c_cur, 11, [1, 3, 5], style_dim))
-
         self.conformers = nn.ModuleList()
-        self.post_n_fft = self.gen_istft_n_fft
-        self.conv_post = weight_norm(Conv1d(128, self.post_n_fft + 2, 7, 1, padding=3))
-        for i in range(len(self.ups)):
-            ch = upsample_initial_channel // (2**i)
+        self.upsamples = nn.ModuleList()
+        self.up_conv = nn.ModuleList()
+        ch = upsample_initial_channel
+        for i in range(self.num_upsamples):
             self.conformers.append(
                 Conformer(
                     dim=ch,
@@ -166,14 +116,133 @@ class RingformerGenerator(torch.nn.Module):
                 )
             )
 
-        self.ups.apply(init_weights)
-        self.conv_post.apply(init_weights)
+            ch //= upsample_rates[i]
+            self.upsamples.append(
+                nn.Upsample(scale_factor=upsample_rates[i], mode="linear")
+            )
+            self.up_conv.append(
+                weight_norm(
+                    Conv1d(
+                        ch,
+                        ch,
+                        kernel_size=upsample_kernel_sizes[i],
+                        padding=upsample_kernel_sizes[i] // 2,
+                    )
+                )
+            )
+            self.alphas.append(nn.Parameter(torch.ones(1, ch, 1)))
+            for j, (k, d) in enumerate(
+                zip(resblock_kernel_sizes, resblock_dilation_sizes)
+            ):
+                self.resblocks.append(resblock(ch, k, d, style_dim))
+
+            if i + 1 < self.num_upsamples:
+                stride_f0 = math.prod(upsample_rates[i + 1 :])
+                self.noise_convs.append(
+                    weight_norm(
+                        Conv1d(
+                            gen_istft_n_fft + 2,
+                            ch,
+                            kernel_size=stride_f0 * 2,
+                            stride=stride_f0,
+                            padding=(stride_f0 + 1) // 2,
+                        )
+                    )
+                )
+                self.noise_res.append(resblock(ch, 7, [1, 3, 5], style_dim))
+            else:
+                self.noise_convs.append(
+                    weight_norm(Conv1d(gen_istft_n_fft + 2, ch, kernel_size=1))
+                )
+                self.noise_res.append(resblock(ch, 11, [1, 3, 5], style_dim))
+
         self.reflection_pad = torch.nn.ReflectionPad1d((1, 0))
+
+    def linear_additive(self, x, i):
+        x = self.upsamples[i](x)
+        x = rearrange(x, "b (f2 f) t -> b f2 f t", f2=self.upsample_rates[i])
+        x = x.sum(dim=1).squeeze(1)
+        return x
+
+    def forward(self, mel, style, har):
+        # x: [b,d,t]
+        x = mel
+        s = style
+        residual = mel
+
+        for i in range(self.num_upsamples):
+            if i > 0:
+                x += residual
+            x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
+            x = rearrange(x, "b f t -> b t f")
+            x = self.conformers[i](x)
+            x = rearrange(x, "b t f -> b f t")
+
+            x = self.linear_additive(x, i)
+            x = self.up_conv[i](x)
+            if i < self.num_upsamples - 1:
+                residual = self.linear_additive(residual, i)
+            else:
+                x = self.reflection_pad(x)
+
+            s = torch.nn.functional.interpolate(s, size=x.shape[2], mode="nearest")
+            x_source = self.noise_convs[i](har)
+            x_source = self.noise_res[i](x_source, s)
+
+            x = x + x_source
+
+            xs = None
+            for j in range(self.num_kernels):
+                if xs is None:
+                    xs = self.resblocks[i * self.num_kernels + j](x, s)
+                else:
+                    xs += self.resblocks[i * self.num_kernels + j](x, s)
+            x = xs / self.num_kernels
+        return x
+
+
+class RingformerGenerator(torch.nn.Module):
+    def __init__(
+        self,
+        style_dim,
+        resblock_kernel_sizes,
+        upsample_rates,
+        upsample_initial_channel,
+        resblock_dilation_sizes,
+        upsample_kernel_sizes,
+        gen_istft_n_fft,
+        gen_istft_hop_size,
+        sample_rate,
+    ):
+        super(RingformerGenerator, self).__init__()
+        self.post_n_fft = gen_istft_n_fft
+
+        self.m_source = SourceModuleHnNSF(
+            sampling_rate=sample_rate,
+            upsample_scale=math.prod(upsample_rates) * gen_istft_hop_size,
+            harmonic_num=8,
+            voiced_threshod=10,
+        )
+        self.f0_upsamp = torch.nn.Upsample(
+            scale_factor=math.prod(upsample_rates) * gen_istft_hop_size
+        )
+
+        self.magphase_model = MagphaseModel(
+            style_dim=style_dim,
+            resblock_kernel_sizes=resblock_kernel_sizes,
+            upsample_rates=upsample_rates,
+            upsample_initial_channel=upsample_initial_channel,
+            resblock_dilation_sizes=resblock_dilation_sizes,
+            upsample_kernel_sizes=upsample_kernel_sizes,
+            sample_rate=sample_rate,
+            gen_istft_n_fft=gen_istft_n_fft,
+        )
+
         self.stft = TorchSTFT(
             device="cuda",
-            filter_length=self.gen_istft_n_fft,
-            hop_length=self.gen_istft_hop_size,
-            win_length=self.gen_istft_n_fft,
+            filter_length=gen_istft_n_fft,
+            hop_length=gen_istft_hop_size,
+            win_length=gen_istft_n_fft,
         )
 
     def forward(self, mel, style, pitch, energy):
@@ -189,38 +258,12 @@ class RingformerGenerator(torch.nn.Module):
             har_spec, har_phase = self.stft.transform(har_source)
             har = torch.cat([har_spec, har_phase], dim=1)
 
-        for i in range(self.num_upsamples):
-            x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
-            x = rearrange(x, "b f t -> b t f")
-            x = self.conformers[i](x)
-            x = rearrange(x, "b t f -> b f t")
+        x = self.magphase_model(x, s, har)
 
-            x = self.ups[i](x)
-            x_source = self.noise_convs[i](har)
-            # if i == self.num_upsamples - 1:
-            #     x = self.reflection_pad(x)
-            #     x_source = self.reflection_pad(x_source)
-
-            s = torch.nn.functional.interpolate(s, size=x.shape[2], mode="nearest")
-            x_source = self.noise_res[i](x_source, s)
-
-            x = x + x_source
-
-            xs = None
-            for j in range(self.num_kernels):
-                if xs is None:
-                    xs = self.resblocks[i * self.num_kernels + j](x, s)
-                else:
-                    xs += self.resblocks[i * self.num_kernels + j](x, s)
-            x = xs / self.num_kernels
-
-        x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
-        x = self.conv_post(x)
-
-        spec = torch.exp(x[:, : self.post_n_fft // 2 + 1, :])
+        mag = torch.exp(x[:, : self.post_n_fft // 2 + 1, :])
         phase = torch.sin(x[:, self.post_n_fft // 2 + 1 :, :])
-        out = self.stft.inverse(spec, phase).to(x.device)
-        return DecoderPrediction(audio=out, magnitude=spec, phase=phase)
+        out = self.stft.inverse(mag, phase).to(x.device)
+        return DecoderPrediction(audio=out, magnitude=mag, phase=phase)
 
     def remove_weight_norm(self):
         print("Removing weight norm...")
