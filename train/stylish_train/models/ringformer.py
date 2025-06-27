@@ -161,28 +161,23 @@ class MagphaseModel(torch.nn.Module):
     def linear_additive(self, x, i):
         x = self.upsamples[i](x)
         x = rearrange(x, "b (f2 f) t -> b f2 f t", f2=self.upsample_rates[i])
-        x = x.sum(dim=1).squeeze(1)
+        x = x.sum(dim=1).squeeze(1) / self.upsample_rates[i]
         return x
 
     def forward(self, mel, style, har):
         # x: [b,d,t]
         x = mel
         s = style
-        residual = mel
 
         for i in range(self.num_upsamples):
-            if i > 0:
-                x += residual
             x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
             x = rearrange(x, "b f t -> b t f")
             x = self.conformers[i](x)
             x = rearrange(x, "b t f -> b f t")
 
             x = self.linear_additive(x, i)
-            x = self.up_conv[i](x)
-            if i < self.num_upsamples - 1:
-                residual = self.linear_additive(residual, i)
-            else:
+            x = self.up_conv[i](x) + x
+            if i == self.num_upsamples - 1:
                 x = self.reflection_pad(x)
 
             s = torch.nn.functional.interpolate(s, size=x.shape[2], mode="nearest")
