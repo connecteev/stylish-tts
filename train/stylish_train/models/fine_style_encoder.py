@@ -40,13 +40,13 @@ class FineStyleEncoder(torch.nn.Module):
         x, _ = self.conformer(x, lengths)
         x = rearrange(x, "b l c -> b c l")
         x = self.conv_out(x)
-        x = (
-            F.conv2d(
-                x.unsqueeze(1),
-                torch.ones(1, 1, 1, 37).to(x.device),
-                padding=(0, 37 // 2),
-                stride=1,
-            ).squeeze(1)
-            / 37
-        )
+        # x = (
+        #     F.conv2d(
+        #         x.unsqueeze(1),
+        #         torch.ones(1, 1, 1, 37).to(x.device),
+        #         padding=(0, 37 // 2),
+        #         stride=1,
+        #     ).squeeze(1)
+        #     / 37
+        # )
         return x

@@ -396,24 +396,13 @@ class TextEncoder(nn.Module):
             p_dropout=0.5,
         )
 
-        # self.encoder = Encoder(
-        #     self.n_channels + (spk_emb_dim if self.n_spks > 1 else 0),
-        #     config.filter_channels,
-        #     config.heads,
-        #     config.layers,
-        #     config.kernel_size,
-        #     config.dropout,
-        # )
-
-        self.encoder = Conformer(
-            input_dim=self.n_channels + (spk_emb_dim if self.n_spks > 1 else 0),
-            num_heads=config.heads,
-            ffn_dim=config.filter_channels,
-            num_layers=config.layers,
-            depthwise_conv_kernel_size=config.kernel_size,
-            dropout=config.dropout,
-            use_group_norm=False,
-            convolution_first=False,
+        self.encoder = Encoder(
+            self.n_channels + (spk_emb_dim if self.n_spks > 1 else 0),
+            config.filter_channels,
+            config.heads,
+            config.layers,
+            config.kernel_size,
+            config.dropout,
         )
 
         self.proj_m = torch.nn.Conv1d(
@@ -446,10 +435,7 @@ class TextEncoder(nn.Module):
         x = self.prenet(x, x_mask)
         if self.n_spks > 1:
             x = torch.cat([x, spks.unsqueeze(-1).repeat(1, 1, x.shape[-1])], dim=1)
-        x = rearrange(x, "b k t -> b t k")
-        x, _ = self.encoder(x, x_lengths)
-        x = rearrange(x, "b t k -> b k t")
-        # x = self.encoder(x, x_mask)
+        x = self.encoder(x, x_mask)
         mu = self.proj_m(x) * x_mask
 
         return mu, x, x_mask

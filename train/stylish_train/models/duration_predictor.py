@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from einops import rearrange
 from .common import LinearNorm
 from .text_encoder import FFN, MultiHeadAttention, sequence_mask
-from torchaudio.models import Conformer
 
 
 # class DurationPredictor(nn.Module):
@@ -155,78 +154,53 @@ class DurationEncoder(nn.Module):
         self.n_layers = nlayers
         self.kernel_size = kernel_size
 
-        self.blocks = torch.nn.ModuleList()
-        self.norm_layers = torch.nn.ModuleList()
+        self.drop = torch.nn.Dropout(dropout)
+        self.attn_layers = torch.nn.ModuleList()
+        self.norm_layers_1 = torch.nn.ModuleList()
+        self.ffn_layers = torch.nn.ModuleList()
+        self.norm_layers_2 = torch.nn.ModuleList()
+        self.proj_layers = torch.nn.ModuleList()
+
         for _ in range(self.n_layers):
-            self.blocks.append(
-                Conformer(
-                    input_dim=hidden_channels,
-                    num_heads=n_heads,
-                    ffn_dim=hidden_channels * 2,
-                    num_layers=1,
-                    depthwise_conv_kernel_size=kernel_size,
-                    dropout=dropout,
-                    use_group_norm=False,
-                    convolution_first=False,
+            self.attn_layers.append(
+                MultiHeadAttention(
+                    hidden_channels, hidden_channels, n_heads, p_dropout=dropout
                 )
             )
-            self.norm_layers.append(AdaLayerNorm(sty_dim, hidden_channels))
-
-        # self.drop = torch.nn.Dropout(dropout)
-        # self.attn_layers = torch.nn.ModuleList()
-        # self.norm_layers_1 = torch.nn.ModuleList()
-        # self.ffn_layers = torch.nn.ModuleList()
-        # self.norm_layers_2 = torch.nn.ModuleList()
-        # self.proj_layers = torch.nn.ModuleList()
-
-        # for _ in range(self.n_layers):
-        #     self.attn_layers.append(
-        #         MultiHeadAttention(
-        #             hidden_channels, hidden_channels, n_heads, p_dropout=dropout
-        #         )
-        #     )
-        #     self.norm_layers_1.append(AdaLayerNorm(sty_dim, hidden_channels))
-        #     self.ffn_layers.append(
-        #         FFN(
-        #             hidden_channels,
-        #             hidden_channels,
-        #             hidden_channels * 2,
-        #             kernel_size,
-        #             p_dropout=dropout,
-        #         )
-        #     )
-        #     self.norm_layers_2.append(AdaLayerNorm(sty_dim, hidden_channels))
-        #     self.proj_layers.append(nn.Conv1d(hidden_channels, d_model, 1))
+            self.norm_layers_1.append(AdaLayerNorm(sty_dim, hidden_channels))
+            self.ffn_layers.append(
+                FFN(
+                    hidden_channels,
+                    hidden_channels,
+                    hidden_channels * 2,
+                    kernel_size,
+                    p_dropout=dropout,
+                )
+            )
+            self.norm_layers_2.append(AdaLayerNorm(sty_dim, hidden_channels))
+            self.proj_layers.append(nn.Conv1d(hidden_channels, d_model, 1))
 
     def forward(self, x, style, x_lengths):
+        x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
+        attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
         x = torch.cat([x, style], dim=1)
-        x = x.transpose(-1, -2)
         for i in range(self.n_layers):
-            x, _ = self.blocks[i](x, x_lengths)
-            x = self.norm_layers[i](x, style)
-        # x = x.transpose(-1, -2)
-        # x = torch.cat([x, style], dim=1)
-        return x
-        # x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
-        # attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
-        # x = torch.cat([x, style], dim=1)
-        # for i in range(self.n_layers):
-        #     x = x * x_mask
-        #     y = self.attn_layers[i](x, x, attn_mask)
-        #     y = self.drop(y)
-        #     x = self.norm_layers_1[i](torch.transpose(x + y, -1, -2), style).transpose(
-        #         -1, -2
-        #     )
+            x = x * x_mask
+            y = self.attn_layers[i](x, x, attn_mask)
+            y = self.drop(y)
+            x = self.norm_layers_1[i](torch.transpose(x + y, -1, -2), style).transpose(
+                -1, -2
+            )
 
-        #     y = self.ffn_layers[i](x, x_mask)
-        #     y = self.drop(y)
-        #     x = self.norm_layers_2[i](torch.transpose(x + y, -1, -2), style).transpose(
-        #         -1, -2
-        #     )
-        #     x = self.proj_layers[i](x)
-        #     x = torch.cat([x, style], dim=1)
-        # x = x * x_mask
-        # return x.transpose(-1, -2)
+            y = self.ffn_layers[i](x, x_mask)
+            y = self.drop(y)
+            x = self.norm_layers_2[i](torch.transpose(x + y, -1, -2), style).transpose(
+                -1, -2
+            )
+            x = self.proj_layers[i](x)
+            x = torch.cat([x, style], dim=1)
+        x = x * x_mask
+        return x.transpose(-1, -2)
 
 
 class AdaLayerNorm(nn.Module):
