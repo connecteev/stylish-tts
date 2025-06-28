@@ -4,7 +4,8 @@ import torch.nn as nn
 from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
 from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
 
-from .conformer import Conformer
+# from .conformer import Conformer
+from torchaudio.models import Conformer
 from .common import init_weights, get_padding
 
 from .stft import STFT
@@ -153,17 +154,27 @@ class RingformerGenerator(torch.nn.Module):
             ch = upsample_initial_channel // (2**i)
             self.conformers.append(
                 Conformer(
-                    dim=ch,
-                    depth=2,
-                    dim_head=64,
-                    heads=8,
-                    ff_mult=4,
-                    conv_expansion_factor=2,
-                    conv_kernel_size=31,
-                    attn_dropout=0.1,
-                    ff_dropout=0.1,
-                    conv_dropout=0.1,
+                    input_dim=ch,
+                    num_heads=8,
+                    ffn_dim=ch * 2,
+                    num_layers=2,
+                    depthwise_conv_kernel_size=31,
+                    dropout=0.3,
+                    use_group_norm=False,
+                    convolution_first=False,
                 )
+                # Conformer(
+                #     dim=ch,
+                #     depth=2,
+                #     dim_head=64,
+                #     heads=8,
+                #     ff_mult=4,
+                #     conv_expansion_factor=2,
+                #     conv_kernel_size=31,
+                #     attn_dropout=0.1,
+                #     ff_dropout=0.1,
+                #     conv_dropout=0.1,
+                # )
             )
 
         self.ups.apply(init_weights)
@@ -191,8 +202,11 @@ class RingformerGenerator(torch.nn.Module):
 
         for i in range(self.num_upsamples):
             x = x + (1 / self.alphas[i]) * (torch.sin(self.alphas[i] * x) ** 2)
+            lengths = torch.full(
+                size=(x.shape[0],), fill_value=x.shape[2], device=x.device
+            )
             x = rearrange(x, "b f t -> b t f")
-            x = self.conformers[i](x)
+            x, _ = self.conformers[i](x, lengths)
             x = rearrange(x, "b t f -> b f t")
 
             x = self.ups[i](x)

@@ -5,17 +5,30 @@ from torch.nn import functional as F
 from torch.nn.utils import weight_norm
 from einops import rearrange
 from .common import InstanceNorm1d
+from torchaudio.models import Conformer
 
 
 class PitchEnergyPredictor(torch.nn.Module):
     def __init__(self, style_dim, d_hid, dropout=0.1):
         super().__init__()
 
-        self.shared = nn.LSTM(
-            d_hid + style_dim, d_hid // 2, 1, batch_first=True, bidirectional=True
+        # self.shared = nn.LSTM(
+        #     d_hid + style_dim, d_hid // 2, 1, batch_first=True, bidirectional=True
+        # )
+        self.shared = Conformer(
+            input_dim=d_hid + style_dim,
+            num_heads=8,
+            ffn_dim=d_hid * 2 + style_dim * 2,
+            num_layers=4,
+            depthwise_conv_kernel_size=7,
+            dropout=0.3,
+            use_group_norm=False,
+            convolution_first=False,
         )
         self.F0 = nn.ModuleList()
-        self.F0.append(AdainResBlk1d(d_hid, d_hid, style_dim, dropout_p=dropout))
+        self.F0.append(
+            AdainResBlk1d(d_hid + style_dim, d_hid, style_dim, dropout_p=dropout)
+        )
         self.F0.append(
             AdainResBlk1d(
                 d_hid, d_hid // 2, style_dim, upsample=True, dropout_p=dropout
@@ -26,7 +39,9 @@ class PitchEnergyPredictor(torch.nn.Module):
         )
 
         self.N = nn.ModuleList()
-        self.N.append(AdainResBlk1d(d_hid, d_hid, style_dim, dropout_p=dropout))
+        self.N.append(
+            AdainResBlk1d(d_hid + style_dim, d_hid, style_dim, dropout_p=dropout)
+        )
         self.N.append(
             AdainResBlk1d(
                 d_hid, d_hid // 2, style_dim, upsample=True, dropout_p=dropout
@@ -43,7 +58,8 @@ class PitchEnergyPredictor(torch.nn.Module):
         upstyle = torch.nn.functional.interpolate(style, scale_factor=2, mode="nearest")
         # x = torch.cat([prosody, style], dim=1)
         x = prosody
-        x, _ = self.shared(x.transpose(-1, -2))
+        lengths = torch.full(size=(x.shape[0],), fill_value=x.shape[2], device=x.device)
+        x, _ = self.shared(x.transpose(-1, -2), lengths)
 
         s = style
         F0 = x.transpose(-1, -2)
