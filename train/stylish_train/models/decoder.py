@@ -128,17 +128,15 @@ class Decoder(nn.Module):
             AdainResBlk1d(hidden_dim + 2 + residual_dim, hidden_dim, style_dim)
         )
         self.decode.append(
-            AdainResBlk1d(
-                hidden_dim + 2 + residual_dim, dim_out, style_dim, upsample=True
-            )
+            AdainResBlk1d(hidden_dim + 2 + residual_dim, dim_out, style_dim)
         )
 
         self.F0_conv = weight_norm(
-            nn.Conv1d(1, 1, kernel_size=3, stride=2, groups=1, padding=1)
+            nn.Conv1d(1, 1, kernel_size=3, stride=1, groups=1, padding=1)
         )
 
         self.N_conv = weight_norm(
-            nn.Conv1d(1, 1, kernel_size=3, stride=2, groups=1, padding=1)
+            nn.Conv1d(1, 1, kernel_size=3, stride=1, groups=1, padding=1)
         )
 
         self.asr_res = nn.Sequential(
@@ -175,12 +173,8 @@ class Decoder(nn.Module):
 
         asr_res = self.asr_res(asr)
 
-        res = True
         for block in self.decode:
-            if res:
-                x = torch.cat([x, asr_res, F0, N], axis=1)
+            x = torch.cat([x, asr_res, F0, N], axis=1)
             x = block(x, s)
-            if block.upsample_type != "none":
-                res = False
 
         return x, F0_curve

@@ -45,14 +45,20 @@ class BatchContext:
             prediction = batch.pitch
         return prediction
 
-    def textual_style_embedding(self, sentence_embedding: torch.Tensor):
-        return self.model.textual_style_encoder(sentence_embedding)
+    def textual_style_embedding(
+        self, sentence_embedding: torch.Tensor, text_lengths: torch.Tensor
+    ):
+        return self.model.textual_style_encoder(sentence_embedding, text_lengths)
 
-    def textual_prosody_embedding(self, sentence_embedding: torch.Tensor):
-        return self.model.textual_prosody_encoder(sentence_embedding)
+    def textual_prosody_embedding(
+        self, sentence_embedding: torch.Tensor, text_lengths: torch.Tensor
+    ):
+        return self.model.textual_prosody_encoder(sentence_embedding, text_lengths)
 
-    def textual_pe_embedding(self, sentence_embedding: torch.Tensor):
-        return self.model.textual_pe_encoder(sentence_embedding)
+    def textual_pe_embedding(
+        self, sentence_embedding: torch.Tensor, text_lengths: torch.Tensor
+    ):
+        return self.model.textual_pe_encoder(sentence_embedding, text_lengths)
 
     def decoding(
         self,
@@ -77,7 +83,7 @@ class BatchContext:
         text_encoding, _, _ = self.text_encoding(batch.text, batch.text_length)
         print_gpu_vram("text encoder")
         energy = self.acoustic_energy(batch.mel)
-        style_embedding = self.textual_style_embedding(text_encoding)
+        style_embedding = self.textual_style_embedding(text_encoding, batch.text_length)
         print_gpu_vram("style")
         pitch = self.calculate_pitch(batch).detach()
         prediction = self.decoding(
@@ -95,9 +101,11 @@ class BatchContext:
             batch.text, batch.text_length
         )
         pe_encoding, _, _ = self.text_pe_encoding(batch.text, batch.text_length)
-        style_embedding = self.textual_style_embedding(text_encoding)
-        prosody_embedding = self.textual_prosody_embedding(duration_encoding)
-        pe_embedding = self.textual_pe_embedding(pe_encoding)
+        style_embedding = self.textual_style_embedding(text_encoding, batch.text_length)
+        prosody_embedding = self.textual_prosody_embedding(
+            duration_encoding, batch.text_length
+        )
+        pe_embedding = self.textual_pe_embedding(pe_encoding, batch.text_length)
         self.duration_prediction = self.model.duration_predictor(
             duration_encoding,
             prosody_embedding,
