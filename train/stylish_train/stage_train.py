@@ -18,7 +18,7 @@ def train_alignment(
     ctc, _ = model.text_aligner(mel, batch.mel_length)
     train.stage.optimizer.zero_grad()
     loss_ctc = train.align_loss(
-        ctc, batch.text, batch.mel_length // 2, batch.text_length, step_type="train"
+        ctc, batch.text, batch.mel_length, batch.text_length, step_type="train"
     )
 
     log.add_loss(

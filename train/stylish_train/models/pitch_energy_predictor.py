@@ -40,7 +40,7 @@ class PitchEnergyPredictor(torch.nn.Module):
         self.N_proj = nn.Conv1d(d_hid // 2, 1, 1, 1, 0)
 
     def forward(self, prosody, style):
-        upstyle = torch.nn.functional.interpolate(style, scale_factor=2, mode="nearest")
+        # upstyle = torch.nn.functional.interpolate(style, scale_factor=2, mode="nearest")
         # x = torch.cat([prosody, style], dim=1)
         x = prosody
         x, _ = self.shared(x.transpose(-1, -2))
@@ -49,16 +49,16 @@ class PitchEnergyPredictor(torch.nn.Module):
         F0 = x.transpose(-1, -2)
         for block in self.F0:
             F0 = block(F0, s)
-            if block.upsample_type == True:
-                s = upstyle
+            # if block.upsample_type == True:
+            #     s = upstyle
         F0 = self.F0_proj(F0)
 
         s = style
         N = x.transpose(-1, -2)
         for block in self.N:
             N = block(N, s)
-            if block.upsample_type == True:
-                s = upstyle
+            # if block.upsample_type == True:
+            #     s = upstyle
         N = self.N_proj(N)
 
         return F0.squeeze(1), N.squeeze(1)
@@ -106,7 +106,7 @@ class AdainResBlk1d(nn.Module):
             self.conv1x1 = weight_norm(nn.Conv1d(dim_in, dim_out, 1, 1, 0, bias=False))
 
     def _shortcut(self, x):
-        x = self.upsample(x)
+        # x = self.upsample(x)
         if self.learned_sc:
             x = self.conv1x1(x)
         return x
@@ -114,9 +114,9 @@ class AdainResBlk1d(nn.Module):
     def _residual(self, x, s):
         x = self.norm1(x, s)
         x = self.actv(x)
-        x = self.pool(x)
-        if self.upsample_type == True:
-            s = torch.nn.functional.interpolate(s, scale_factor=2, mode="nearest")
+        # x = self.pool(x)
+        # if self.upsample_type == True:
+        #     s = torch.nn.functional.interpolate(s, scale_factor=2, mode="nearest")
         x = self.conv1(self.dropout(x))
         x = self.norm2(x, s)
         x = self.actv(x)

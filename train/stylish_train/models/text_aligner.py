@@ -37,7 +37,7 @@ def tdnn_blstm_ctc_model_base(n_mels, num_symbols):
         hidden_dim=640,
         drop_out=0.1,
         tdnn_blstm_spec=[
-            ("tdnn", 5, 2, 1),
+            ("tdnn", 5, 1, 1),
             ("tdnn", 3, 1, 1),
             ("tdnn", 3, 1, 1),
             ("ffn", 5),
