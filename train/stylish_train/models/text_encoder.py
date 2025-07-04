@@ -6,7 +6,6 @@ from torch.nn import functional as F
 from torch.nn.utils.parametrizations import weight_norm
 from einops import rearrange
 from .common import LinearNorm, get_padding
-from .conv_next import BasicConvNeXtBlock
 from utils import sequence_mask
 
 from torchaudio.models import Conformer

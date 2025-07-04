@@ -29,6 +29,25 @@ def train_alignment(
     return log.detach(), None
 
 
+def train_duration(
+    batch, model, train, probing
+) -> Tuple[LossLog, Optional[torch.Tensor]]:
+    state = BatchContext(train=train, model=model)
+    duration = state.predict_duration(batch)
+    train.stage.optimizer.zero_grad()
+    log = build_loss_log(train)
+    loss_ce, loss_dur = compute_duration_ce_loss(
+        duration,
+        batch.alignment.sum(dim=-1),
+        batch.text_length,
+    )
+    log.add_loss("duration_ce", loss_ce)
+    log.add_loss("duration", loss_dur)
+    train.accelerator.backward(log.backwards_loss())
+
+    return log.detach(), None
+
+
 def train_acoustic(
     batch, model, train, probing
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:

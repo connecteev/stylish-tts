@@ -56,6 +56,10 @@ class TrainingPlanConfig(BaseModel):
         default_factory=TrainingStageConfig,
         description="Configuration for pretraining the text alignment model.",
     )
+    duration: TrainingStageConfig = Field(
+        default_factory=TrainingStageConfig,
+        description="Configuration for training durations solo",
+    )
     acoustic: TrainingStageConfig = Field(
         default_factory=TrainingStageConfig,
         description="Configuration for joint training of acoustic models stage (second stage).",

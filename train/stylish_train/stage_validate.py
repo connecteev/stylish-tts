@@ -41,6 +41,22 @@ def validate_alignment(batch, train):
 
 
 @torch.no_grad()
+def validate_duration(batch, train):
+    state = BatchContext(train=train, model=train.model)
+    duration = state.predict_duration(batch)
+    log = build_loss_log(train)
+    loss_ce, loss_dur = compute_duration_ce_loss(
+        duration,
+        batch.alignment.sum(dim=-1),
+        batch.text_length,
+    )
+    log.add_loss("duration_ce", loss_ce)
+    log.add_loss("duration", loss_dur)
+
+    return log.detach(), None, None, None
+
+
+@torch.no_grad()
 def validate_acoustic(batch, train):
     state = BatchContext(train=train, model=train.model)
     pred = state.acoustic_prediction_single(batch)

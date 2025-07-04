@@ -3,6 +3,7 @@ import torch
 from torch.nn.utils.parametrizations import weight_norm
 
 from .common import get_padding, init_weights, leaky_clamp, InstanceNorm1d
+from .adawin import AdaWinBlock1d
 
 
 class ConvNeXtBlock(torch.nn.Module):
@@ -13,6 +14,7 @@ class ConvNeXtBlock(torch.nn.Module):
         dim_out: int,
         intermediate_dim: int,
         style_dim: int,
+        window_length: int,
         dilation: List[int],
         activation: bool = False,
         dropout: float = 0.0,
@@ -23,12 +25,14 @@ class ConvNeXtBlock(torch.nn.Module):
             torch.nn.Conv1d(dim_in, dim_in, kernel_size=7, padding=3, groups=dim_in)
         )  # depthwise conv
 
-        self.norm = AdaResBlock(
-            channels=dim_in,
-            kernel_size=7,
+        self.norm = AdaWinBlock1d(
+            dim_in=dim_in,
+            dim_out=dim_in,
+            # kernel_size=7,
             style_dim=style_dim,
-            dilation=dilation,
-            activation=activation,
+            # dilation=dilation,
+            # activation=activation,
+            window_length=window_length,
             dropout_p=dropout,
         )
         self.pwconv1 = torch.nn.Linear(
@@ -44,13 +48,13 @@ class ConvNeXtBlock(torch.nn.Module):
             )
 
     def forward(
-        self, x: torch.Tensor, s: torch.Tensor, h: Optional[torch.Tensor] = None
+        self, x: torch.Tensor, s: torch.Tensor, lengths: torch.Tensor
     ) -> torch.Tensor:
         x_in = x
         if self.shortcut is not None:
             x_in = self.shortcut(x_in)
         x = self.dwconv(x)
-        x = self.norm(x, s, h)
+        x = self.norm(x, s, lengths)
 
         x = x.transpose(1, 2)  # (B, C, T) -> (B, T, C)
         x = self.pwconv1(x)
