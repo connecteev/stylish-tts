@@ -7,6 +7,7 @@ from einops import rearrange
 
 from .conv_next import ConvNeXtBlock, BasicConvNeXtBlock
 from .common import InstanceNorm1d
+from .adawin import AdaWinBlock1d
 
 
 class AdaIN1d(nn.Module):
@@ -114,21 +115,47 @@ class Decoder(nn.Module):
     ):
         super().__init__()
 
+        self.norm_window_length = 37
         self.decode = nn.ModuleList()
 
-        self.encode = AdainResBlk1d(dim_in + 2, hidden_dim, style_dim)
+        self.encode = AdaWinBlock1d(
+            dim_in=dim_in + 2,
+            dim_out=hidden_dim,
+            style_dim=style_dim,
+            window_length=norm_window_length,
+        )
 
         self.decode.append(
-            AdainResBlk1d(hidden_dim + 2 + residual_dim, hidden_dim, style_dim)
+            AdaWinBlock1d(
+                dim_in=hidden_dim + 2 + residual_dim,
+                dim_out=hidden_dim,
+                style_dim=style_dim,
+                window_length=norm_window_length,
+            )
         )
         self.decode.append(
-            AdainResBlk1d(hidden_dim + 2 + residual_dim, hidden_dim, style_dim)
+            AdaWinBlock1d(
+                dim_in=hidden_dim + 2 + residual_dim,
+                dim_out=hidden_dim,
+                style_dim=style_dim,
+                window_length=norm_window_length,
+            )
         )
         self.decode.append(
-            AdainResBlk1d(hidden_dim + 2 + residual_dim, hidden_dim, style_dim)
+            AdaWinBlock1d(
+                dim_in=hidden_dim + 2 + residual_dim,
+                dim_out=hidden_dim,
+                style_dim=style_dim,
+                window_length=norm_window_length,
+            )
         )
         self.decode.append(
-            AdainResBlk1d(hidden_dim + 2 + residual_dim, dim_out, style_dim)
+            AdaWinBlock1d(
+                dim_in=hidden_dim + 2 + residual_dim,
+                dim_out=dim_out,
+                style_dim=style_dim,
+                window_length=norm_window_length,
+            )
         )
 
         self.F0_conv = weight_norm(
@@ -143,7 +170,7 @@ class Decoder(nn.Module):
             weight_norm(nn.Conv1d(dim_in, residual_dim, kernel_size=1)),
         )
 
-    def forward(self, asr, F0_curve, N, s, probing=False):
+    def forward(self, asr, F0_curve, N, s, lengths, probing=False):
         F0_down = 3
         N_down = 3
         if F0_down:
@@ -169,12 +196,12 @@ class Decoder(nn.Module):
         N = self.N_conv(N.unsqueeze(1))
 
         x = torch.cat([asr, F0, N], axis=1)
-        x = self.encode(x, s)
+        x = self.encode(x, s, lengths)
 
         asr_res = self.asr_res(asr)
 
         for block in self.decode:
             x = torch.cat([x, asr_res, F0, N], axis=1)
-            x = block(x, s)
+            x = block(x, s, lengths)
 
         return x, F0_curve

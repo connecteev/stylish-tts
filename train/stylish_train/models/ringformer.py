@@ -15,6 +15,7 @@ import random
 from scipy.signal import get_window
 from utils import DecoderPrediction, clamped_exp, leaky_clamp
 from .common import InstanceNorm1d
+from .adawin import AdaWinBlock1d
 
 
 import numpy as np
@@ -88,7 +89,6 @@ class RingformerGenerator(torch.nn.Module):
         self.num_upsamples = len(upsample_rates)
         self.gen_istft_n_fft = gen_istft_n_fft
         self.gen_istft_hop_size = gen_istft_hop_size
-        resblock = AdaINResBlock1
 
         self.m_source = SourceModuleHnNSF(
             sampling_rate=sample_rate,
@@ -125,7 +125,15 @@ class RingformerGenerator(torch.nn.Module):
             for j, (k, d) in enumerate(
                 zip(resblock_kernel_sizes, resblock_dilation_sizes)
             ):
-                self.resblocks.append(resblock(ch, k, d, style_dim))
+                self.resblocks.append(
+                    AdaConvBlock1d(
+                        channels=ch,
+                        style_dim=style_dim,
+                        window_length=37,
+                        kernel_size=k,
+                        dilation=d,
+                    )
+                )
             c_cur = upsample_initial_channel // (2 ** (i + 1))
 
             if i + 1 < len(upsample_rates):  #
@@ -139,12 +147,28 @@ class RingformerGenerator(torch.nn.Module):
                         padding=(stride_f0 + 1) // 2,
                     )
                 )
-                self.noise_res.append(resblock(c_cur, 7, [1, 3, 5], style_dim))
+                self.noise_res.append(
+                    AdaConvBlock1d(
+                        channels=c_cur,
+                        style_dim=style_dim,
+                        window_length=37,
+                        kernel_size=7,
+                        dilation=[1, 3, 5],
+                    )
+                )
             else:
                 self.noise_convs.append(
                     Conv1d(gen_istft_n_fft + 2, c_cur, kernel_size=1)
                 )
-                self.noise_res.append(resblock(c_cur, 11, [1, 3, 5], style_dim))
+                self.noise_res.append(
+                    AdaConvBlock1d(
+                        channels=c_cur,
+                        style_dim=style_dim,
+                        window_length=37,
+                        kernel_size=11,
+                        dilation=[1, 3, 5],
+                    )
+                )
 
         self.conformers = nn.ModuleList()
         self.post_n_fft = self.gen_istft_n_fft
@@ -202,16 +226,16 @@ class RingformerGenerator(torch.nn.Module):
             #     x_source = self.reflection_pad(x_source)
 
             s = torch.nn.functional.interpolate(s, size=x.shape[2], mode="nearest")
-            x_source = self.noise_res[i](x_source, s)
+            x_source = self.noise_res[i](x_source, s, lengths)
 
             x = x + x_source
 
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
-                    xs = self.resblocks[i * self.num_kernels + j](x, s)
+                    xs = self.resblocks[i * self.num_kernels + j](x, s, lengths)
                 else:
-                    xs += self.resblocks[i * self.num_kernels + j](x, s)
+                    xs += self.resblocks[i * self.num_kernels + j](x, s, lengths)
             x = xs / self.num_kernels
 
         x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
