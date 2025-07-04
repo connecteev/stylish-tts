@@ -95,6 +95,20 @@ class BatchContext:
         )
         return prediction
 
+    def predict_duration(self, batch):
+        duration_encoding, _, _ = self.text_duration_encoding(
+            batch.text, batch.text_length
+        )
+        prosody_embedding = self.textual_prosody_embedding(
+            duration_encoding, batch.text_length
+        )
+        self.duration_prediction = self.model.duration_predictor(
+            duration_encoding,
+            prosody_embedding,
+            batch.text_length,
+        )
+        return self.duration_prediction
+
     def textual_prediction_single(self, batch):
         text_encoding, _, _ = self.text_encoding(batch.text, batch.text_length)
         duration_encoding, _, _ = self.text_duration_encoding(
@@ -118,7 +132,9 @@ class BatchContext:
         )
         self.pitch_prediction, self.energy_prediction = (
             self.model.pitch_energy_predictor(
-                pe.transpose(-1, -2) @ batch.alignment, pe_embedding @ batch.alignment
+                pe.transpose(-1, -2) @ batch.alignment,
+                pe_embedding @ batch.alignment,
+                batch.mel_length,
             )
         )
         pitch = self.calculate_pitch(batch, self.pitch_prediction)

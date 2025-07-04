@@ -82,7 +82,10 @@ class LossLog:
             if key == "generator" or key == "align_loss":
                 loss = value
             else:
-                loss = value / value.detach()
+                if torch.is_tensor(value):
+                    loss = value / value.detach()
+                else:
+                    loss = value
             weight = self.weight(key)
             total += loss * weight
         return total

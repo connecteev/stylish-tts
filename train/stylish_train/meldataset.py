@@ -277,7 +277,8 @@ class Collater(object):
         waves = torch.zeros((batch_size, batch[0][7].shape[-1])).float()
         pitches = torch.zeros((batch_size, max_mel_length)).float()
         align_mels = torch.zeros((batch_size, 80, max_mel_length)).float()
-        alignments = torch.zeros((batch_size, max_text_length, max_mel_length))
+        # alignments = torch.zeros((batch_size, max_text_length, max_mel_length))
+        alignments = torch.zeros((batch_size, max_text_length, max_mel_length // 2))
 
         for bid, (
             label,
@@ -312,7 +313,8 @@ class Collater(object):
                 pitches[bid] = pitch
             align_mels[bid, :, :mel_size] = align_mel
 
-            pred_dur = duration[0]
+            alignments[bid, :text_size, : mel_size // 2] = duration
+            # pred_dur = duration[0]
             # for i in range(pred_dur.shape[0] - 1):
             #     if pred_dur[i] > 1 and pred_dur[i+1] > 1:
             #         pick = random.random()
@@ -322,13 +324,13 @@ class Collater(object):
             #         elif pick < duration[1][i] + duration[2][i]:
             #             pred_dur[i] -= 1
             #             pred_dur[i+1] += 1
-            indices = torch.repeat_interleave(
-                torch.arange(text_size, device="cpu"), pred_dur.to(torch.int)
-            )
-            indices = indices.to("cpu")
-            pred_aln_trg = torch.zeros((text_size, indices.shape[0]), device="cpu")
-            pred_aln_trg[indices, torch.arange(indices.shape[0])] = 1
-            alignments[bid, :text_size, :mel_size] = pred_aln_trg
+            # indices = torch.repeat_interleave(
+            #     torch.arange(text_size, device="cpu"), pred_dur.to(torch.int)
+            # )
+            # indices = indices.to("cpu")
+            # pred_aln_trg = torch.zeros((text_size, indices.shape[0]), device="cpu")
+            # pred_aln_trg[indices, torch.arange(indices.shape[0])] = 1
+            # alignments[bid, :text_size, :mel_size] = pred_aln_trg
 
         result = (
             waves,

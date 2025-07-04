@@ -4,6 +4,9 @@ import torch.nn.functional as F
 from einops import rearrange
 from .common import LinearNorm
 from .text_encoder import FFN, MultiHeadAttention, sequence_mask
+from .common import InstanceNorm1d
+from .adawin import AdaWinBlock1d, AdaWinLayer1d
+from .conv_next import ConvNeXtBlock
 
 
 # class DurationPredictor(nn.Module):
@@ -46,15 +49,35 @@ class DurationPredictor(nn.Module):
         self, style_dim, d_hid, nlayers, max_dur=50, dropout=0.1, has_duration_proj=True
     ):
         super().__init__()
-        self.text_encoder = DurationEncoder(
-            sty_dim=style_dim, d_model=d_hid, nlayers=nlayers, dropout=dropout
-        )
-        self.duration_proj = LinearNorm(d_hid + style_dim, max_dur)
+        # self.text_encoder = DurationEncoder(
+        #     sty_dim=style_dim, d_model=d_hid, nlayers=nlayers, dropout=dropout
+        # )
+        # self.duration_proj = LinearNorm(d_hid + style_dim, max_dur)
+        self.blocks = nn.ModuleList()
+        for _ in range(nlayers):
+            # self.blocks.append(AdaWinBlock1d(dim_in=d_hid, dim_out=d_hid, style_dim=style_dim, window_length=37, dropout_p=dropout))
+            self.blocks.append(
+                ConvNeXtBlock(
+                    dim_in=d_hid,
+                    dim_out=d_hid,
+                    intermediate_dim=d_hid * 4,
+                    style_dim=style_dim,
+                    dilation=[1, 3, 5],
+                    dropout=dropout,
+                    window_length=37,
+                )
+            )
+        self.duration_proj = LinearNorm(d_hid, 1)  # max_dur)
 
     def forward(self, texts, style, text_lengths):
-        d = self.text_encoder(texts, style, text_lengths)
-        duration = self.duration_proj(d)
-        return duration.squeeze(-1)
+        # d = self.text_encoder(texts, style, text_lengths)
+        # duration = self.duration_proj(d)
+        x = texts
+        for block in self.blocks:
+            x = block(x, style, text_lengths)
+        x = x.transpose(-2, -1)
+        duration = self.duration_proj(x)
+        return duration  # .squeeze(-1)
 
 
 # class DurationEncoder(nn.Module):
@@ -146,6 +169,7 @@ class DurationEncoder(nn.Module):
         dropout=0.1,
         n_heads=2,
         kernel_size=1,
+        norm_window_length=17,
         **kwargs,
     ):
         super().__init__()
@@ -167,7 +191,13 @@ class DurationEncoder(nn.Module):
                     hidden_channels, hidden_channels, n_heads, p_dropout=dropout
                 )
             )
-            self.norm_layers_1.append(AdaLayerNorm(sty_dim, hidden_channels))
+            self.norm_layers_1.append(
+                AdaWinLayer1d(
+                    channels=hidden_channels,
+                    window_length=norm_window_length,
+                    style_dim=sty_dim,
+                )
+            )
             self.ffn_layers.append(
                 FFN(
                     hidden_channels,
@@ -177,7 +207,13 @@ class DurationEncoder(nn.Module):
                     p_dropout=dropout,
                 )
             )
-            self.norm_layers_2.append(AdaLayerNorm(sty_dim, hidden_channels))
+            self.norm_layers_2.append(
+                AdaWinLayer1d(
+                    channels=hidden_channels,
+                    window_length=norm_window_length,
+                    style_dim=sty_dim,
+                )
+            )
             self.proj_layers.append(nn.Conv1d(hidden_channels, d_model, 1))
 
     def forward(self, x, style, x_lengths):
@@ -188,38 +224,36 @@ class DurationEncoder(nn.Module):
             x = x * x_mask
             y = self.attn_layers[i](x, x, attn_mask)
             y = self.drop(y)
-            x = self.norm_layers_1[i](torch.transpose(x + y, -1, -2), style).transpose(
-                -1, -2
-            )
+            x = self.norm_layers_1[i](x + y, style, x_lengths)
 
             y = self.ffn_layers[i](x, x_mask)
             y = self.drop(y)
-            x = self.norm_layers_2[i](torch.transpose(x + y, -1, -2), style).transpose(
-                -1, -2
-            )
+            x = self.norm_layers_2[i](x + y, style, x_lengths)
             x = self.proj_layers[i](x)
             x = torch.cat([x, style], dim=1)
         x = x * x_mask
         return x.transpose(-1, -2)
 
 
-class AdaLayerNorm(nn.Module):
-    def __init__(self, style_dim, channels, eps=1e-5):
-        super().__init__()
-        self.channels = channels
-        self.eps = eps
-
-        self.fc = nn.Linear(style_dim, channels * 2)
-
-    def forward(self, x, s):
-        x = x.transpose(-1, -2)
-        x = x.transpose(1, -1)
-
-        s = rearrange(s, "b s t -> b t s")
-        h = self.fc(s)
-        gamma = h[:, :, : self.channels]
-        beta = h[:, :, self.channels :]
-
-        x = F.layer_norm(x, (self.channels,), eps=self.eps)
-        x = (1 + gamma) * x + beta
-        return x
+# class AdaLayerNorm(nn.Module):
+#     def __init__(self, style_dim, channels, eps=1e-5):
+#         super().__init__()
+#         self.channels = channels
+#         self.eps = eps
+#
+#         self.fc = nn.Linear(style_dim, channels * 2)
+#         self.norm = nn.LayerNorm(channels)
+#
+#     def forward(self, x, s):
+#         x = x.transpose(-1, -2)
+#         x = x.transpose(1, -1)
+#
+#         s = rearrange(s, "b s t -> b t s")
+#         h = self.fc(s)
+#         gamma = h[:, :, : self.channels]
+#         beta = h[:, :, self.channels :]
+#
+#         # x = F.layer_norm(x, (self.channels,), eps=self.eps)
+#         x = self.norm(x)
+#         # x = (1 + gamma) * x + beta
+#         return x

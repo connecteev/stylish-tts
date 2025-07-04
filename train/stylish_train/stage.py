@@ -12,12 +12,14 @@ import matplotlib.pyplot as plt
 from loss_log import combine_logs
 from stage_train import (
     train_alignment,
+    train_duration,
     train_acoustic,
     train_textual,
 )
 
 from stage_validate import (
     validate_alignment,
+    validate_duration,
     validate_acoustic,
     validate_textual,
 )
@@ -63,6 +65,23 @@ stages = {
             "text_length",
             "align_mel",
             "mel_length",
+        ],
+    ),
+    "duration": StageConfig(
+        next_stage=None,
+        train_fn=train_duration,
+        validate_fn=validate_duration,
+        train_models=[
+            "text_duration_encoder",
+            "textual_prosody_encoder",
+            "duration_predictor",
+        ],
+        eval_models=[],
+        discriminators=[],
+        inputs=[
+            "text",
+            "text_length",
+            "alignment",
         ],
     ),
     "acoustic": StageConfig(
@@ -234,6 +253,7 @@ class Stage:
         sample_count = train.config.validation.sample_count
         for key in train.model:
             train.model[key].eval()
+            # train.model[key].train()
         logs = []
         progress_bar = None
         if train.accelerator.is_main_process:
