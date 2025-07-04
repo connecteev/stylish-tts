@@ -115,7 +115,7 @@ class Decoder(nn.Module):
     ):
         super().__init__()
 
-        self.norm_window_length = 37
+        norm_window_length = 37
         self.decode = nn.ModuleList()
 
         self.encode = AdaWinBlock1d(
@@ -171,26 +171,26 @@ class Decoder(nn.Module):
         )
 
     def forward(self, asr, F0_curve, N, s, lengths, probing=False):
-        F0_down = 3
-        N_down = 3
-        if F0_down:
-            F0_curve = (
-                nn.functional.conv1d(
-                    F0_curve.unsqueeze(1),
-                    torch.ones(1, 1, F0_down).to("cuda"),
-                    padding=F0_down // 2,
-                ).squeeze(1)
-                / F0_down
-            )
-        if N_down:
-            N = (
-                nn.functional.conv1d(
-                    N.unsqueeze(1),
-                    torch.ones(1, 1, N_down).to("cuda"),
-                    padding=N_down // 2,
-                ).squeeze(1)
-                / N_down
-            )
+        # F0_down = 3
+        # N_down = 3
+        # if F0_down:
+        #     F0_curve = (
+        #         nn.functional.conv1d(
+        #             F0_curve.unsqueeze(1),
+        #             torch.ones(1, 1, F0_down).to("cuda"),
+        #             padding=F0_down // 2,
+        #         ).squeeze(1)
+        #         / F0_down
+        #     )
+        # if N_down:
+        #     N = (
+        #         nn.functional.conv1d(
+        #             N.unsqueeze(1),
+        #             torch.ones(1, 1, N_down).to("cuda"),
+        #             padding=N_down // 2,
+        #         ).squeeze(1)
+        #         / N_down
+        #     )
 
         F0 = self.F0_conv(F0_curve.unsqueeze(1))
         N = self.N_conv(N.unsqueeze(1))

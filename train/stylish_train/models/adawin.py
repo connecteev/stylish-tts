@@ -4,7 +4,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils import weight_norm
 from einops import rearrange
-from .common import InstanceNorm1d
+from .common import InstanceNorm1d, get_padding, init_weights
 from .text_encoder import sequence_mask
 
 
@@ -63,7 +63,7 @@ class AdaConvBlock1d(torch.nn.Module):
         self.convs1 = nn.ModuleList(
             [
                 weight_norm(
-                    Conv1d(
+                    nn.Conv1d(
                         channels,
                         channels,
                         kernel_size,
@@ -73,7 +73,7 @@ class AdaConvBlock1d(torch.nn.Module):
                     )
                 ),
                 weight_norm(
-                    Conv1d(
+                    nn.Conv1d(
                         channels,
                         channels,
                         kernel_size,
@@ -83,7 +83,7 @@ class AdaConvBlock1d(torch.nn.Module):
                     )
                 ),
                 weight_norm(
-                    Conv1d(
+                    nn.Conv1d(
                         channels,
                         channels,
                         kernel_size,
@@ -99,7 +99,7 @@ class AdaConvBlock1d(torch.nn.Module):
         self.convs2 = nn.ModuleList(
             [
                 weight_norm(
-                    Conv1d(
+                    nn.Conv1d(
                         channels,
                         channels,
                         kernel_size,
@@ -109,7 +109,7 @@ class AdaConvBlock1d(torch.nn.Module):
                     )
                 ),
                 weight_norm(
-                    Conv1d(
+                    nn.Conv1d(
                         channels,
                         channels,
                         kernel_size,
@@ -119,7 +119,7 @@ class AdaConvBlock1d(torch.nn.Module):
                     )
                 ),
                 weight_norm(
-                    Conv1d(
+                    nn.Conv1d(
                         channels,
                         channels,
                         kernel_size,

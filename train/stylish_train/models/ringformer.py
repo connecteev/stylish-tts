@@ -15,7 +15,7 @@ import random
 from scipy.signal import get_window
 from utils import DecoderPrediction, clamped_exp, leaky_clamp
 from .common import InstanceNorm1d
-from .adawin import AdaWinBlock1d
+from .adawin import AdaConvBlock1d
 
 
 import numpy as np
@@ -200,7 +200,7 @@ class RingformerGenerator(torch.nn.Module):
             win_length=self.gen_istft_n_fft,
         )
 
-    def forward(self, mel, style, pitch, energy):
+    def forward(self, mel, style, pitch, energy, lengths):
         # x: [b,d,t]
         x = mel
         f0 = pitch
