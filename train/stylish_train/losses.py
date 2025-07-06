@@ -366,12 +366,13 @@ def compute_duration_ce_loss(
         target = torch.zeros_like(pred)
         for i in range(target.shape[0]):
             target[i, : dur[i]] = 1
-        dur_pred = torch.exp(pred).squeeze(1)
-        # dur_pred = torch.sigmoid(pred).sum(dim=1)
+        # dur_pred = torch.exp(pred).squeeze(1)
+        dur_pred = torch.sigmoid(pred).sum(dim=1)
         loss_dur += F.l1_loss(dur_pred[1 : length - 1], dur[1 : length - 1])
-        # loss_ce += F.binary_cross_entropy_with_logits(pred.flatten(), target.flatten())
+        loss_ce += F.binary_cross_entropy_with_logits(pred.flatten(), target.flatten())
     n = len(text_length)
-    return 0.0, loss_dur / n  # loss_ce / n, loss_dur / n
+    # return 0.0, loss_dur / n
+    return loss_ce / n, loss_dur / n
 
 
 def duration_loss(*, pred, gt_attn, lengths, mask):

@@ -3,8 +3,9 @@ from torch.nn import functional as F
 
 from .conv_next import BasicConvNeXtBlock
 
-# from .conformer import Conformer
-from torchaudio.models import Conformer
+from .conformer import Conformer
+
+# from torchaudio.models import Conformer
 from einops import rearrange
 
 
@@ -12,30 +13,31 @@ class FineStyleEncoder(torch.nn.Module):
     # TODO: Remvoe hard-coded values
     def __init__(self, inter_dim, style_dim, layers):
         super().__init__()
-        self.conv_in = torch.nn.Conv1d(inter_dim, 512, kernel_size=7, padding=3)
-        self.conformer = Conformer(
-            input_dim=512,
-            num_heads=8,
-            ffn_dim=inter_dim * 2,
-            num_layers=layers,
-            depthwise_conv_kernel_size=7,
-            dropout=0.1,
-            use_group_norm=True,
-            convolution_first=False,
-        )
+        self.conv_in = torch.nn.Conv1d(inter_dim, 128, kernel_size=7, padding=3)
         # self.conformer = Conformer(
-        #     dim=inter_dim,
-        #     depth=layers,
-        #     dim_head=64,
-        #     heads=8,
-        #     ff_mult=4,
-        #     conv_expansion_factor=2,
-        #     conv_kernel_size=31,
-        #     attn_dropout=0.3,
-        #     ff_dropout=0.3,
-        #     conv_dropout=0.3,
+        #     input_dim=512,
+        #     num_heads=8,
+        #     ffn_dim=inter_dim * 2,
+        #     num_layers=layers,
+        #     depthwise_conv_kernel_size=7,
+        #     dropout=0.1,
+        #     use_group_norm=True,
+        #     convolution_first=False,
         # )
-        self.proj_out = torch.nn.Linear(512, style_dim)
+        self.conformer = Conformer(
+            dim=128,
+            depth=layers,
+            dim_head=32,
+            heads=8,
+            ff_mult=2,
+            conv_expansion_factor=2,
+            conv_kernel_size=7,
+            attn_dropout=0.3,
+            ff_dropout=0.3,
+            conv_dropout=0.3,
+            use_sdpa=False,
+        )
+        self.proj_out = torch.nn.Linear(128, style_dim)
         # self.blocks = torch.nn.ModuleList(
         #     [
         #         BasicConvNeXtBlock(
@@ -52,7 +54,7 @@ class FineStyleEncoder(torch.nn.Module):
         #     x = block(x)
         # return x
         x = rearrange(x, "b c l -> b l c")
-        x, _ = self.conformer(x, lengths)
+        x = self.conformer(x, lengths)
         x = self.proj_out(x)
         x = rearrange(x, "b l c -> b c l")
         # x = (

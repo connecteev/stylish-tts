@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from einops.layers.torch import Rearrange
 from einops import rearrange
 from torch import nn, einsum
+from .text_encoder import sequence_mask
 
 import logging
 
@@ -75,11 +76,7 @@ class PreNorm(nn.Module):
 
     def forward(self, x, **kwargs):
         x = self.norm(x.to(x.device))
-        try:
-            result = self.fn(x.to(x.device), **kwargs)
-        except Exception as e:
-            logger.error(e)
-            exit(str(e))
+        result = self.fn(x.to(x.device), **kwargs)
         return result
 
 
@@ -205,11 +202,16 @@ class ConformerBlock(nn.Module):
         ff_dropout=0.0,
         conv_dropout=0.0,
         conv_causal=False,
+        use_sdpa=True,
     ):
         super().__init__()
         self.ff1 = FeedForward(dim=dim, mult=ff_mult, dropout=ff_dropout)
         self.attn = Attention(
-            dim=dim, dim_head=dim_head, heads=heads, dropout=attn_dropout
+            dim=dim,
+            dim_head=dim_head,
+            heads=heads,
+            dropout=attn_dropout,
+            use_sdpa=use_sdpa,
         )
         self.self_attn_dropout = torch.nn.Dropout(attn_dropout)
         self.conv = ConformerConvModule(
@@ -256,6 +258,7 @@ class Conformer(nn.Module):
         ff_dropout=0.0,
         conv_dropout=0.0,
         conv_causal=False,
+        use_sdpa=True,
     ):
         super().__init__()
         self.dim = dim
@@ -271,12 +274,15 @@ class Conformer(nn.Module):
                     conv_expansion_factor=conv_expansion_factor,
                     conv_kernel_size=conv_kernel_size,
                     conv_causal=conv_causal,
+                    use_sdpa=use_sdpa,
                 )
             )
 
-    def forward(self, x):
-
+    def forward(self, x, lengths=None):
+        if lengths is None:
+            lengths = torch.full((0, x.shape[0]), x.shape[1], dtype=x.dtype)
+        mask = sequence_mask(lengths, max_length=x.shape[1]).to(x.device)
         for block in self.layers:
-            x = block(x)
+            x = block(x, mask)
 
         return x

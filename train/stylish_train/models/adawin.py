@@ -138,9 +138,9 @@ class AdaWinLayer1d(nn.Module):
         gb_kernel = make_kernel("layer", 1, self.window_length, x.device)
         mask = sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
         gamma = h[:, :1, :]
-        # gamma = calculate_mean(gamma, mask, gb_kernel)
+        gamma = calculate_mean(gamma, mask, gb_kernel)
         beta = h[:, 1:, :]
-        # beta = calculate_mean(beta, mask, gb_kernel)
+        beta = calculate_mean(beta, mask, gb_kernel)
         kernel = make_kernel("layer", self.channels, self.window_length, x.device)
         mask = torch.broadcast_to(mask, (x.shape[0], kernel.shape[1], x.shape[2]))
         return (1 + gamma) * self.norm(x, mask, kernel) + beta

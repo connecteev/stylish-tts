@@ -49,34 +49,34 @@ class DurationPredictor(nn.Module):
         self, style_dim, d_hid, nlayers, max_dur=50, dropout=0.1, has_duration_proj=True
     ):
         super().__init__()
-        # self.text_encoder = DurationEncoder(
-        #     sty_dim=style_dim, d_model=d_hid, nlayers=nlayers, dropout=dropout
-        # )
-        # self.duration_proj = LinearNorm(d_hid + style_dim, max_dur)
-        self.blocks = nn.ModuleList()
-        for _ in range(nlayers):
-            # self.blocks.append(AdaWinBlock1d(dim_in=d_hid, dim_out=d_hid, style_dim=style_dim, window_length=37, dropout_p=dropout))
-            self.blocks.append(
-                ConvNeXtBlock(
-                    dim_in=d_hid,
-                    dim_out=d_hid,
-                    intermediate_dim=d_hid * 4,
-                    style_dim=style_dim,
-                    dilation=[1, 3, 5],
-                    dropout=dropout,
-                    window_length=37,
-                )
-            )
-        self.duration_proj = LinearNorm(d_hid, 1)  # max_dur)
+        self.text_encoder = DurationEncoder(
+            sty_dim=style_dim, d_model=d_hid, nlayers=nlayers, dropout=dropout
+        )
+        self.duration_proj = LinearNorm(d_hid + style_dim, max_dur)
+        # self.blocks = nn.ModuleList()
+        # for _ in range(nlayers):
+        #     # self.blocks.append(AdaWinBlock1d(dim_in=d_hid, dim_out=d_hid, style_dim=style_dim, window_length=37, dropout_p=dropout))
+        #     self.blocks.append(
+        #         ConvNeXtBlock(
+        #             dim_in=d_hid,
+        #             dim_out=d_hid,
+        #             intermediate_dim=d_hid * 4,
+        #             style_dim=style_dim,
+        #             dilation=[1, 3, 5],
+        #             dropout=dropout,
+        #             window_length=37,
+        #         )
+        #     )
+        # self.duration_proj = LinearNorm(d_hid, 1)  # max_dur)
 
     def forward(self, texts, style, text_lengths):
-        # d = self.text_encoder(texts, style, text_lengths)
-        # duration = self.duration_proj(d)
-        x = texts
-        for block in self.blocks:
-            x = block(x, style, text_lengths)
-        x = x.transpose(-2, -1)
-        duration = self.duration_proj(x)
+        d = self.text_encoder(texts, style, text_lengths)
+        duration = self.duration_proj(d)
+        # x = texts
+        # for block in self.blocks:
+        #     x = block(x, style, text_lengths)
+        # x = x.transpose(-2, -1)
+        # duration = self.duration_proj(x)
         return duration  # .squeeze(-1)
 
 
@@ -235,25 +235,25 @@ class DurationEncoder(nn.Module):
         return x.transpose(-1, -2)
 
 
-# class AdaLayerNorm(nn.Module):
-#     def __init__(self, style_dim, channels, eps=1e-5):
-#         super().__init__()
-#         self.channels = channels
-#         self.eps = eps
-#
-#         self.fc = nn.Linear(style_dim, channels * 2)
-#         self.norm = nn.LayerNorm(channels)
-#
-#     def forward(self, x, s):
-#         x = x.transpose(-1, -2)
-#         x = x.transpose(1, -1)
-#
-#         s = rearrange(s, "b s t -> b t s")
-#         h = self.fc(s)
-#         gamma = h[:, :, : self.channels]
-#         beta = h[:, :, self.channels :]
-#
-#         # x = F.layer_norm(x, (self.channels,), eps=self.eps)
-#         x = self.norm(x)
-#         # x = (1 + gamma) * x + beta
-#         return x
+class AdaLayerNorm(nn.Module):
+    def __init__(self, *, style_dim, channels, eps=1e-5):
+        super().__init__()
+        self.channels = channels
+        self.eps = eps
+
+        self.fc = nn.Linear(style_dim, channels * 2)
+        # self.norm = nn.LayerNorm(channels)
+
+    def forward(self, x, s, lengths):
+        x = x.transpose(-1, -2)
+        x = x.transpose(1, -1)
+
+        s = rearrange(s, "b s t -> b t s")
+        h = self.fc(s)
+        gamma = h[:, :, : self.channels]
+        beta = h[:, :, self.channels :]
+
+        x = F.layer_norm(x, (self.channels,), eps=self.eps)
+        # x = self.norm(x)
+        x = (1 + gamma) * x + beta
+        return x
