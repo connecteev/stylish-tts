@@ -139,16 +139,16 @@ def calculate_alignments(path, wavdir, aligner, model_config, text_cleaner):
 
 
 def torch_align(mels, text, mel_length, text_length, prediction, model_config):
-    prediction = rearrange(prediction, "b t k -> b k t")
-    prediction = F.interpolate(prediction, scale_factor=2, mode="linear")
-    prediction = rearrange(prediction, "b k t -> b t k")
-    prediction = prediction.contiguous()
-    mel_length *= 2
+    # prediction = rearrange(prediction, "b t k -> b k t")
+    # prediction = F.interpolate(prediction, scale_factor=2, mode="linear")
+    # prediction = rearrange(prediction, "b k t -> b t k")
+    # prediction = prediction.contiguous()
+    # mel_length *= 2
     blank = model_config.text_encoder.tokens
     alignment, scores = torchaudio.functional.forced_align(
         log_probs=prediction,
         targets=text,
-        input_lengths=mel_length // 2,
+        input_lengths=mel_length,
         target_lengths=text_length,
         blank=blank,
     )

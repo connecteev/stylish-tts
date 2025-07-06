@@ -18,7 +18,7 @@ def validate_alignment(batch, train):
     train.stage.optimizer.zero_grad()
 
     loss_ctc = train.align_loss(
-        ctc, batch.text, batch.mel_length // 2, batch.text_length, step_type="eval"
+        ctc, batch.text, batch.mel_length, batch.text_length, step_type="eval"
     )
 
     blank = train.model_config.text_encoder.tokens
@@ -29,7 +29,7 @@ def validate_alignment(batch, train):
         _, scores = torchaudio.functional.forced_align(
             log_probs=logprobs[i].unsqueeze(0).contiguous(),
             targets=batch.text[i, : batch.text_length[i].item()].unsqueeze(0),
-            input_lengths=batch.mel_length[i].unsqueeze(0) // 2,
+            input_lengths=batch.mel_length[i].unsqueeze(0),
             target_lengths=batch.text_length[i].unsqueeze(0),
             blank=blank,
         )

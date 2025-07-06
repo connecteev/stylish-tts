@@ -67,14 +67,24 @@ class BatchContext:
         pitch,
         energy,
         style,
+        length,
         probing=False,
     ):
         mel, f0_curve = self.model.decoder(
-            text_encoding @ duration, pitch, energy, style @ duration, probing=probing
+            text_encoding @ duration,
+            pitch,
+            energy,
+            style @ duration,
+            length,
+            probing=probing,
         )
         print_gpu_vram("decoder")
         result = self.model.generator(
-            mel=mel, style=style @ duration, pitch=f0_curve, energy=energy
+            mel=mel,
+            style=style @ duration,
+            pitch=f0_curve,
+            energy=energy,
+            lengths=length,
         )
         print_gpu_vram("generator")
         return result
@@ -92,6 +102,7 @@ class BatchContext:
             pitch,
             energy,
             style_embedding,
+            batch.mel_length,
         )
         return prediction
 
@@ -144,5 +155,6 @@ class BatchContext:
             pitch,
             self.energy_prediction,
             style_embedding,
+            batch.mel_length,
         )
         return prediction
