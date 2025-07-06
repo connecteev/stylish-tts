@@ -279,9 +279,11 @@ class Conformer(nn.Module):
             )
 
     def forward(self, x, lengths=None):
-        if lengths is None:
-            lengths = torch.full((0, x.shape[0]), x.shape[1], dtype=x.dtype)
-        mask = sequence_mask(lengths, max_length=x.shape[1]).to(x.device)
+        # if lengths is None:
+        #     lengths = torch.full((x.shape[0],), x.shape[1], dtype=x.dtype)
+        mask = None
+        if lengths is not None:
+            mask = sequence_mask(lengths, max_length=x.shape[1]).to(x.device)
         for block in self.layers:
             x = block(x, mask)
 
