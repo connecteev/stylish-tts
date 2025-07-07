@@ -35,7 +35,7 @@ class FineStyleEncoder(torch.nn.Module):
             attn_dropout=0.3,
             ff_dropout=0.3,
             conv_dropout=0.3,
-            use_sdpa=False,
+            use_sdpa=True,
         )
         self.proj_out = torch.nn.Linear(128, style_dim)
         # self.blocks = torch.nn.ModuleList(
