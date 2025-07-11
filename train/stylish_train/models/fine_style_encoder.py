@@ -44,7 +44,7 @@ class FineStyleEncoder(torch.nn.Module):
                     dim=style_dim,
                     intermediate_dim=style_dim * 4,
                 )
-                for _ in range(layers)
+                for _ in range(config.layers)
             ]
         )
 
