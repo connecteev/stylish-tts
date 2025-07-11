@@ -58,12 +58,15 @@ class ExportModel(torch.nn.Module):
         pitch,
         energy,
         style,
+        lengths,
     ):
         style = style @ duration
         mel, _ = self.decoder(
-            text_encoding @ duration, pitch, energy, style, probing=False
+            text_encoding @ duration, pitch, energy, style, lengths, probing=False
         )
-        prediction = self.generator(mel=mel, style=style, pitch=pitch, energy=energy)
+        prediction = self.generator(
+            mel=mel, style=style, pitch=pitch, energy=energy, lengths=lengths
+        )
         return prediction
 
     def duration_predict(self, duration_encoding, prosody_embedding, text_lengths):
@@ -96,9 +99,11 @@ class ExportModel(torch.nn.Module):
         duration_encoding, _, _ = self.text_duration_encoder(texts, text_lengths)
         pe_encoding, _, _ = self.text_pe_encoder(texts, text_lengths)
 
-        style_embedding = self.textual_style_encoder(text_encoding)
-        prosody_embedding = self.textual_prosody_encoder(duration_encoding)
-        pe_embedding = self.textual_pe_encoder(pe_encoding)
+        style_embedding = self.textual_style_encoder(text_encoding, text_lengths)
+        prosody_embedding = self.textual_prosody_encoder(
+            duration_encoding, text_lengths
+        )
+        pe_embedding = self.textual_pe_encoder(pe_encoding, text_lengths)
 
         duration_prediction = self.duration_predict(
             duration_encoding,
@@ -110,9 +115,11 @@ class ExportModel(torch.nn.Module):
             pe_embedding,
             text_lengths,
         )
+        mel_length = torch.full([1], duration_prediction.shape[-1]).to(pe.device)
         pitch_prediction, energy_prediction = self.pitch_energy_predictor(
             pe.transpose(-1, -2) @ duration_prediction,
             pe_embedding @ duration_prediction,
+            mel_length,
         )
         prediction = self.decoding_single(
             text_encoding,
@@ -120,5 +127,6 @@ class ExportModel(torch.nn.Module):
             pitch_prediction,
             energy_prediction,
             style_embedding,
+            mel_length,
         )
         return prediction.audio.squeeze()

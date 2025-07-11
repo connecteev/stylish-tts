@@ -7,7 +7,7 @@ from einops import rearrange
 from batch_context import BatchContext
 from loss_log import build_loss_log
 from losses import compute_duration_ce_loss
-from utils import length_to_mask
+from utils import length_to_mask, log_norm
 
 
 @torch.no_grad()
@@ -58,10 +58,22 @@ def validate_duration(batch, train):
 
 @torch.no_grad()
 def validate_acoustic(batch, train):
-    state = BatchContext(train=train, model=train.model)
-    pred = state.acoustic_prediction_single(batch)
+    pred = train.model.speech_predictor(
+        batch.text, batch.text_length, batch.mel_length, batch.alignment
+    )
+    energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
+    # state = BatchContext(train=train, model=train.model)
+    # pred = state.acoustic_prediction_single(batch)
     log = build_loss_log(train)
     train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
+    log.add_loss(
+        "pitch",
+        torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
+    )
+    log.add_loss(
+        "energy",
+        torch.nn.functional.smooth_l1_loss(energy, pred.energy),
+    )
     return log, batch.alignment[0], pred.audio, batch.audio_gt
 
 

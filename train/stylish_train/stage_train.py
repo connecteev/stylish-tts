@@ -7,7 +7,7 @@ from einops import rearrange
 from batch_context import BatchContext
 from loss_log import LossLog, build_loss_log
 from losses import compute_duration_ce_loss
-from utils import length_to_mask, print_gpu_vram
+from utils import length_to_mask, print_gpu_vram, log_norm
 
 
 def train_alignment(
@@ -51,10 +51,14 @@ def train_duration(
 def train_acoustic(
     batch, model, train, probing
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:
-    state = BatchContext(train=train, model=model)
+    # state = BatchContext(train=train, model=model)
     with train.accelerator.autocast():
         print_gpu_vram("init")
-        pred = state.acoustic_prediction_single(batch)
+        pred = model.speech_predictor(
+            batch.text, batch.text_length, batch.mel_length, batch.alignment
+        )
+        with torch.no_grad():
+            energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
         print_gpu_vram("predicted")
         train.stage.optimizer.zero_grad()
 
@@ -79,6 +83,15 @@ def train_acoustic(
                 train.magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
             )
         print_gpu_vram("magphase_loss")
+
+        log.add_loss(
+            "pitch",
+            torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
+        )
+        log.add_loss(
+            "energy",
+            torch.nn.functional.smooth_l1_loss(energy, pred.energy),
+        )
 
         train.accelerator.backward(
             log.backwards_loss() * math.sqrt(batch.text.shape[0])

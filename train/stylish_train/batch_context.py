@@ -121,19 +121,10 @@ class BatchContext:
         return self.duration_prediction
 
     def textual_prediction_single(self, batch):
-        text_encoding, _, _ = self.text_encoding(batch.text, batch.text_length)
-        duration_encoding, _, _ = self.text_duration_encoding(
-            batch.text, batch.text_length
-        )
         pe_encoding, _, _ = self.text_pe_encoding(batch.text, batch.text_length)
-        style_embedding = self.textual_style_embedding(text_encoding, batch.text_length)
-        prosody_embedding = self.textual_prosody_embedding(
-            duration_encoding, batch.text_length
-        )
         pe_embedding = self.textual_pe_embedding(pe_encoding, batch.text_length)
         self.duration_prediction = self.model.duration_predictor(
-            duration_encoding,
-            prosody_embedding,
+            batch.text,
             batch.text_length,
         )
         pe = self.model.pe_duration_encoder(

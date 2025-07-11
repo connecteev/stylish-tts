@@ -72,8 +72,6 @@ stages = {
         train_fn=train_duration,
         validate_fn=validate_duration,
         train_models=[
-            "text_duration_encoder",
-            "textual_prosody_encoder",
             "duration_predictor",
         ],
         eval_models=[],
@@ -85,14 +83,11 @@ stages = {
         ],
     ),
     "acoustic": StageConfig(
-        next_stage="textual",
+        next_stage="duration",
         train_fn=train_acoustic,
         validate_fn=validate_acoustic,
         train_models=[
-            "text_encoder",
-            "textual_style_encoder",
-            "decoder",
-            "generator",
+            "speech_predictor",
         ],
         eval_models=[],
         discriminators=["mpd", "mrd"],

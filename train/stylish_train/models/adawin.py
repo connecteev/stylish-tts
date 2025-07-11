@@ -187,21 +187,21 @@ class AdaConvBlock1d(torch.nn.Module):
             remove_weight_norm(l)
 
 
-def calculate_mean(x, mask, kernel):
-    num = convolution(x, kernel)
-    denom = convolution(mask, kernel)
+def calculate_mean(x, mask, kernel, window_length):
+    num = convolution(x, kernel, window_length)
+    denom = convolution(mask, kernel, window_length)
     return num / (denom + 1e-9) * mask
 
 
-def calculate_var(x, mean, mask, kernel):
+def calculate_var(x, mean, mask, kernel, window_length):
     term = torch.square((x - mean) * mask)
-    num = convolution(term, kernel)
-    denom = convolution(mask, kernel)
+    num = convolution(term, kernel, window_length)
+    denom = convolution(mask, kernel, window_length)
     return num / (denom + 1e-9) * mask
 
 
-def convolution(x, kernel):
-    x = F.conv1d(x, kernel.to(x.device), padding=kernel.shape[-1] // 2)
+def convolution(x, kernel, window_length):
+    x = F.conv1d(x, kernel.to(x.device), padding=window_length // 2)
     return x
 
 
@@ -213,9 +213,9 @@ def kernel_key(norm_type, channels, window_length):
 
 
 def make_kernel(norm_type, channels, window_length, device):
-    key = kernel_key(norm_type, channels, window_length)
-    if key in kernel_cache:
-        return kernel_cache[key]
+    # key = kernel_key(norm_type, channels, window_length)
+    # if key in kernel_cache:
+    #     return kernel_cache[key]
 
     if norm_type == "instance":
         kernel = torch.diag(torch.ones(channels)).unsqueeze(2)
@@ -224,6 +224,27 @@ def make_kernel(norm_type, channels, window_length, device):
         kernel = torch.ones(1, channels, window_length)
     else:
         exit("Unsupported norm_type for AdaWin: {norm_type}")
+    kernel = kernel.to(device)
+    # kernel_cache[key] = kernel
+    return kernel
+
+
+def make_kernel_instance(channels, window_length, device):
+    key = kernel_key("instance", channels, window_length)
+    if key in kernel_cache:
+        return kernel_cache[key]
+    kernel = torch.diag(torch.ones(channels)).unsqueeze(2)
+    kernel = torch.broadcast_to(kernel, (channels, channels, window_length))
+    kernel = kernel.to(device)
+    kernel_cache[key] = kernel
+    return kernel
+
+
+def make_kernel_layer(channels, window_length, device):
+    key = kernel_key("layer", channels, window_length)
+    if key in kernel_cache:
+        return kernel_cache[key]
+    kernel = torch.ones(1, channels, window_length)
     kernel = kernel.to(device)
     kernel_cache[key] = kernel
     return kernel
@@ -234,22 +255,27 @@ class AdaWinInstance1d(nn.Module):
         super().__init__()
         self.channels = channels
         self.window_length = window_length
-        self.norm = WindowedNorm1d()
+        self.norm = WindowedNorm1d(channels=channels)
         self.fc = weight_norm(nn.Linear(style_dim, channels * 2))
+        self.pool = nn.AvgPool1d(
+            kernel_size=window_length, stride=1, padding=window_length // 2
+        )
 
     def forward(self, x, s, lengths):
         s = rearrange(s, "b s t -> b t s")
         h = self.fc(s)
         h = rearrange(h, "b t s -> b s t")
 
-        kernel = make_kernel("instance", self.channels, self.window_length, x.device)
-        mask = sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
-        mask = torch.broadcast_to(mask, (x.shape[0], kernel.shape[1], x.shape[2]))
+        # kernel = make_kernel_instance(self.channels, self.window_length, x.device)
+        # mask = sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
+        # mask = torch.broadcast_to(mask, (x.shape[0], kernel.shape[1], x.shape[2]))
         gamma = h[:, : self.channels, :]
-        gamma = calculate_mean(gamma, mask, kernel)
+        gamma = self.pool(gamma)
+        # gamma = calculate_mean(gamma, mask, kernel, self.window_length)
         beta = h[:, self.channels :, :]
-        beta = calculate_mean(beta, mask, kernel)
-        return (1 + gamma) * self.norm(x, mask, kernel) + beta
+        beta = self.pool(beta)
+        # beta = calculate_mean(beta, mask, kernel, self.window_length)
+        return (1 + gamma) * self.norm(x) + beta
 
 
 class AdaWinLayer1d(nn.Module):
@@ -257,35 +283,41 @@ class AdaWinLayer1d(nn.Module):
         super().__init__()
         self.channels = channels
         self.window_length = window_length
-        self.norm = WindowedNorm1d()
+        self.norm = WindowedNorm1d(channels=1)
         self.fc = nn.Linear(style_dim, 2)
+        self.pool = nn.AvgPool1d(
+            kernel_size=window_length, stride=1, padding=window_length // 2
+        )
 
     def forward(self, x, s, lengths):
         s = rearrange(s, "b s t -> b t s")
         h = self.fc(s)
         h = rearrange(h, "b t s -> b s t")
 
-        gb_kernel = make_kernel("layer", 1, self.window_length, x.device)
-        mask = sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
+        # gb_kernel = make_kernel_layer(1, self.window_length, x.device)
+        # mask = sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
         gamma = h[:, :1, :]
-        gamma = calculate_mean(gamma, mask, gb_kernel)
+        gamma = self.pool(gamma)
+        # gamma = calculate_mean(gamma, mask, gb_kernel, self.window_length)
         beta = h[:, 1:, :]
-        beta = calculate_mean(beta, mask, gb_kernel)
-        kernel = make_kernel("layer", self.channels, self.window_length, x.device)
-        mask = torch.broadcast_to(mask, (x.shape[0], kernel.shape[1], x.shape[2]))
-        return (1 + gamma) * self.norm(x, mask, kernel) + beta
+        beta = self.pool(beta)
+        # beta = calculate_mean(beta, mask, gb_kernel, self.window_length)
+        # kernel = make_kernel_layer(self.channels, self.window_length, x.device)
+        # mask = torch.broadcast_to(mask, (x.shape[0], kernel.shape[1], x.shape[2]))
+        return (1 + gamma) * self.norm(x) + beta
 
 
 class WindowedNorm1d(torch.nn.Module):
-    def __init__(self, eps=1e-5):
+    def __init__(self, *, channels, eps=1e-5):
         super().__init__()
         self.eps = eps
-        self.alpha = nn.Parameter(torch.ones(1) * 0.5)
+        self.alpha = nn.Parameter(torch.ones(channels) * 0.5)
 
-    def forward(self, x, mask, kernel):
+    def forward(self, x):
         # x shape: (N, C, L)
         # mean = calculate_mean(x, mask, kernel)
         # var = calculate_var(x, mean, mask, kernel)
         # x_normalized = (x - mean) / torch.sqrt(var + self.eps)
-        x_normalized = torch.tanh(self.alpha * x)
+        alpha = rearrange(self.alpha, "a -> 1 a 1")
+        x_normalized = torch.tanh(alpha * x)
         return x_normalized

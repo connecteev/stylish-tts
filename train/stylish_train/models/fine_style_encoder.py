@@ -11,7 +11,7 @@ from einops import rearrange
 
 class FineStyleEncoder(torch.nn.Module):
     # TODO: Remvoe hard-coded values
-    def __init__(self, inter_dim, style_dim, layers):
+    def __init__(self, inter_dim, style_dim, config):
         super().__init__()
         self.conv_in = torch.nn.Conv1d(inter_dim, 128, kernel_size=7, padding=3)
         # self.conformer = Conformer(
@@ -26,7 +26,7 @@ class FineStyleEncoder(torch.nn.Module):
         # )
         self.conformer = Conformer(
             dim=128,
-            depth=layers,
+            depth=config.layers,
             dim_head=32,
             heads=8,
             ff_mult=2,
@@ -44,7 +44,7 @@ class FineStyleEncoder(torch.nn.Module):
         #             dim=style_dim,
         #             intermediate_dim=style_dim * 4,
         #         )
-        #         for _ in range(layers)
+        #         for _ in range(config.layers)
         #     ]
         # )
 
