@@ -66,22 +66,26 @@ def validate_acoustic(batch, train):
     # pred = state.acoustic_prediction_single(batch)
     log = build_loss_log(train)
     train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
-    log.add_loss(
-        "pitch",
-        torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
-    )
-    log.add_loss(
-        "energy",
-        torch.nn.functional.smooth_l1_loss(energy, pred.energy),
-    )
+    # log.add_loss(
+    #     "pitch",
+    #     torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
+    # )
+    # log.add_loss(
+    #     "energy",
+    #     torch.nn.functional.smooth_l1_loss(energy, pred.energy),
+    # )
     return log, batch.alignment[0], pred.audio, batch.audio_gt
 
 
 @torch.no_grad()
 def validate_textual(batch, train):
-    state = BatchContext(train=train, model=train.model)
-    pred = state.textual_prediction_single(batch)
-    energy = state.acoustic_energy(batch.mel)
+    pred = train.model.speech_predictor(
+        batch.text, batch.text_length, batch.mel_length, batch.alignment
+    )
+    energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
+    # state = BatchContext(train=train, model=train.model)
+    # pred = state.textual_prediction_single(batch)
+    # energy = state.acoustic_energy(batch.mel)
     log = build_loss_log(train)
     train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
     log.add_loss(
@@ -91,11 +95,11 @@ def validate_textual(batch, train):
     log.add_loss(
         "energy", torch.nn.functional.smooth_l1_loss(energy, state.energy_prediction)
     )
-    loss_ce, loss_dur = compute_duration_ce_loss(
-        state.duration_prediction,
-        batch.alignment.sum(dim=-1),
-        batch.text_length,
-    )
-    log.add_loss("duration_ce", loss_ce)
-    log.add_loss("duration", loss_dur)
+    # loss_ce, loss_dur = compute_duration_ce_loss(
+    #     state.duration_prediction,
+    #     batch.alignment.sum(dim=-1),
+    #     batch.text_length,
+    # )
+    # log.add_loss("duration_ce", loss_ce)
+    # log.add_loss("duration", loss_dur)
     return log, batch.alignment[0], pred.audio, batch.audio_gt
