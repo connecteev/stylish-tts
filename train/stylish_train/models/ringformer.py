@@ -132,6 +132,7 @@ class RingformerGenerator(torch.nn.Module):
                         window_length=37,
                         kernel_size=k,
                         dilation=d,
+                        dropout=0.1,
                     )
                 )
             c_cur = upsample_initial_channel // (2 ** (i + 1))
@@ -154,6 +155,7 @@ class RingformerGenerator(torch.nn.Module):
                         window_length=37,
                         kernel_size=7,
                         dilation=[1, 3, 5],
+                        dropout=0.1,
                     )
                 )
             else:
@@ -167,6 +169,7 @@ class RingformerGenerator(torch.nn.Module):
                         window_length=37,
                         kernel_size=11,
                         dilation=[1, 3, 5],
+                        dropout=0.1,
                     )
                 )
 

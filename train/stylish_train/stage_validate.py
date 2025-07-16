@@ -42,8 +42,9 @@ def validate_alignment(batch, train):
 
 @torch.no_grad()
 def validate_duration(batch, train):
-    state = BatchContext(train=train, model=train.model)
-    duration = state.predict_duration(batch)
+    # state = BatchContext(train=train, model=train.model)
+    # duration = state.predict_duration(batch)
+    duration = model.duration_predictor(batch.text, batch.text_length)
     log = build_loss_log(train)
     loss_ce, loss_dur = compute_duration_ce_loss(
         duration,
@@ -58,22 +59,25 @@ def validate_duration(batch, train):
 
 @torch.no_grad()
 def validate_acoustic(batch, train):
-    pred = train.model.speech_predictor(
-        batch.text, batch.text_length, batch.mel_length, batch.alignment
-    )
     energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
+    pred = train.model.speech_predictor(
+        batch.text,
+        batch.text_length,
+        batch.mel_length,
+        batch.alignment,
+    )
     # state = BatchContext(train=train, model=train.model)
     # pred = state.acoustic_prediction_single(batch)
     log = build_loss_log(train)
     train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
-    # log.add_loss(
-    #     "pitch",
-    #     torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
-    # )
-    # log.add_loss(
-    #     "energy",
-    #     torch.nn.functional.smooth_l1_loss(energy, pred.energy),
-    # )
+    log.add_loss(
+        "pitch",
+        torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
+    )
+    log.add_loss(
+        "energy",
+        torch.nn.functional.smooth_l1_loss(energy, pred.energy),
+    )
     return log, batch.alignment[0], pred.audio, batch.audio_gt
 
 
@@ -90,11 +94,9 @@ def validate_textual(batch, train):
     train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
     log.add_loss(
         "pitch",
-        torch.nn.functional.smooth_l1_loss(batch.pitch, state.pitch_prediction),
+        torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
     )
-    log.add_loss(
-        "energy", torch.nn.functional.smooth_l1_loss(energy, state.energy_prediction)
-    )
+    log.add_loss("energy", torch.nn.functional.smooth_l1_loss(energy, pred.energy))
     # loss_ce, loss_dur = compute_duration_ce_loss(
     #     state.duration_prediction,
     #     batch.alignment.sum(dim=-1),

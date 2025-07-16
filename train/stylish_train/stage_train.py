@@ -32,8 +32,9 @@ def train_alignment(
 def train_duration(
     batch, model, train, probing
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:
-    state = BatchContext(train=train, model=model)
-    duration = state.predict_duration(batch)
+    # state = BatchContext(train=train, model=model)
+    # duration = state.predict_duration(batch)
+    duration = model.duration_predictor(batch.text, batch.text_length)
     train.stage.optimizer.zero_grad()
     log = build_loss_log(train)
     loss_ce, loss_dur = compute_duration_ce_loss(
@@ -54,11 +55,14 @@ def train_acoustic(
     # state = BatchContext(train=train, model=model)
     with train.accelerator.autocast():
         print_gpu_vram("init")
-        pred = model.speech_predictor(
-            batch.text, batch.text_length, batch.mel_length, batch.alignment
-        )
         with torch.no_grad():
             energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
+        pred = model.speech_predictor(
+            batch.text,
+            batch.text_length,
+            batch.mel_length,
+            batch.alignment,
+        )
         print_gpu_vram("predicted")
         train.stage.optimizer.zero_grad()
 
@@ -84,14 +88,14 @@ def train_acoustic(
             )
         print_gpu_vram("magphase_loss")
 
-        # log.add_loss(
-        #     "pitch",
-        #     torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
-        # )
-        # log.add_loss(
-        #     "energy",
-        #     torch.nn.functional.smooth_l1_loss(energy, pred.energy),
-        # )
+        log.add_loss(
+            "pitch",
+            torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
+        )
+        log.add_loss(
+            "energy",
+            torch.nn.functional.smooth_l1_loss(energy, pred.energy),
+        )
 
         train.accelerator.backward(
             log.backwards_loss() * math.sqrt(batch.text.shape[0])
@@ -106,8 +110,11 @@ def train_textual(
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:
     # state = BatchContext(train=train, model=model)
     with train.accelerator.autocast():
-        pred = model.speech_predictor(
-            batch.text, batch.text_length, batch.mel_length, batch.alignment
+        # pred = model.speech_predictor(
+        #     batch.text, batch.text_length, batch.mel_length, batch.alignment
+        # )
+        pred_pitch, pred_energy = model.speech_predictor.pitch_energy_predictor(
+            batch.text, batch.text_length, batch.alignment
         )
         with torch.no_grad():
             energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
@@ -116,29 +123,29 @@ def train_textual(
         # pitch = state.calculate_pitch(batch)
         train.stage.optimizer.zero_grad()
         log = build_loss_log(train)
-        train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
+        # train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
         # log.add_loss(
         #     "generator",
         #     train.generator_loss(
         #         batch.audio_gt.detach().unsqueeze(1).float(), pred.audio, ["msbd"]
         #     ).mean(),
         # )
-        log.add_loss(
-            "slm",
-            train.wavlm_loss(batch.audio_gt.detach(), pred.audio),
-        )
-        if pred.magnitude is not None and pred.phase is not None:
-            log.add_loss(
-                "magphase",
-                train.magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
-            )
+        # log.add_loss(
+        #     "slm",
+        #     train.wavlm_loss(batch.audio_gt.detach(), pred.audio),
+        # )
+        # if pred.magnitude is not None and pred.phase is not None:
+        #     log.add_loss(
+        #         "magphase",
+        #         train.magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
+        #     )
         log.add_loss(
             "pitch",
-            torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
+            torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
         )
         log.add_loss(
             "energy",
-            torch.nn.functional.smooth_l1_loss(energy, pred.energy),
+            torch.nn.functional.smooth_l1_loss(energy, pred_energy),
         )
         # loss_ce, loss_dur = compute_duration_ce_loss(
         #     state.duration_prediction,
@@ -151,4 +158,4 @@ def train_textual(
             log.backwards_loss() * math.sqrt(batch.text.shape[0])
         )
 
-    return log.detach(), pred.audio.detach()
+    return log.detach(), None

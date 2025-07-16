@@ -26,8 +26,12 @@ class AdaWinBlock1d(nn.Module):
         self.dropout = nn.Dropout(dropout_p)
 
     def _build_weights(self, dim_in, dim_out, style_dim, window_length):
-        self.conv1 = weight_norm(nn.Conv1d(dim_in, dim_out, 3, 1, 1))
-        self.conv2 = weight_norm(nn.Conv1d(dim_out, dim_out, 3, 1, 1))
+        self.conv1 = weight_norm(
+            nn.Conv1d(dim_in, dim_out, 3, 1, 1, padding_mode="reflect")
+        )
+        self.conv2 = weight_norm(
+            nn.Conv1d(dim_out, dim_out, 3, 1, 1, padding_mode="reflect")
+        )
         self.norm1 = AdaWinInstance1d(
             channels=dim_in, window_length=window_length, style_dim=style_dim
         )
@@ -58,7 +62,9 @@ class AdaWinBlock1d(nn.Module):
 
 
 class AdaConvBlock1d(torch.nn.Module):
-    def __init__(self, *, channels, style_dim, window_length, kernel_size, dilation):
+    def __init__(
+        self, *, channels, style_dim, window_length, kernel_size, dilation, dropout
+    ):
         super(AdaConvBlock1d, self).__init__()
         self.convs1 = nn.ModuleList(
             [
@@ -70,6 +76,7 @@ class AdaConvBlock1d(torch.nn.Module):
                         1,
                         dilation=dilation[0],
                         padding=get_padding(kernel_size, dilation[0]),
+                        padding_mode="reflect",
                     )
                 ),
                 weight_norm(
@@ -80,6 +87,7 @@ class AdaConvBlock1d(torch.nn.Module):
                         1,
                         dilation=dilation[1],
                         padding=get_padding(kernel_size, dilation[1]),
+                        padding_mode="reflect",
                     )
                 ),
                 weight_norm(
@@ -90,6 +98,7 @@ class AdaConvBlock1d(torch.nn.Module):
                         1,
                         dilation=dilation[2],
                         padding=get_padding(kernel_size, dilation[2]),
+                        padding_mode="reflect",
                     )
                 ),
             ]
@@ -106,6 +115,7 @@ class AdaConvBlock1d(torch.nn.Module):
                         1,
                         dilation=1,
                         padding=get_padding(kernel_size, 1),
+                        padding_mode="reflect",
                     )
                 ),
                 weight_norm(
@@ -116,6 +126,7 @@ class AdaConvBlock1d(torch.nn.Module):
                         1,
                         dilation=1,
                         padding=get_padding(kernel_size, 1),
+                        padding_mode="reflect",
                     )
                 ),
                 weight_norm(
@@ -126,6 +137,7 @@ class AdaConvBlock1d(torch.nn.Module):
                         1,
                         dilation=1,
                         padding=get_padding(kernel_size, 1),
+                        padding_mode="reflect",
                     )
                 ),
             ]
@@ -166,6 +178,7 @@ class AdaConvBlock1d(torch.nn.Module):
         self.alpha2 = nn.ParameterList(
             [nn.Parameter(torch.ones(1, channels, 1)) for i in range(len(self.convs2))]
         )
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, s, lengths):
         for c1, c2, n1, n2, a1, a2 in zip(
@@ -173,10 +186,100 @@ class AdaConvBlock1d(torch.nn.Module):
         ):
             xt = n1(x, s, lengths)
             xt = xt + (1 / a1) * (torch.sin(a1 * xt) ** 2)  # Snake1D
-            xt = c1(xt)
+            xt = c1(self.dropout(xt))
             xt = n2(xt, s, lengths)
             xt = xt + (1 / a2) * (torch.sin(a2 * xt) ** 2)  # Snake1D
-            xt = c2(xt)
+            xt = c2(self.dropout(xt))
+            x = xt + x
+        return x
+
+    def remove_weight_norm(self):
+        for l in self.convs1:
+            remove_weight_norm(l)
+        for l in self.convs2:
+            remove_weight_norm(l)
+
+
+class AdaPitchBlock1d(torch.nn.Module):
+    def __init__(
+        self, *, channels, style_dim, window_length, kernel_size, dilation, dropout
+    ):
+        super(AdaPitchBlock1d, self).__init__()
+        self.convs1 = nn.ModuleList(
+            [
+                weight_norm(
+                    nn.Conv1d(
+                        channels,
+                        channels,
+                        kernel_size,
+                        1,
+                        dilation=dilation[i],
+                        padding=get_padding(kernel_size, dilation[i]),
+                        padding_mode="reflect",
+                    )
+                )
+                for i in range(3)
+            ]
+        )
+        self.convs1.apply(init_weights)
+
+        self.convs2 = nn.ModuleList(
+            [
+                weight_norm(
+                    nn.Conv1d(
+                        channels,
+                        channels,
+                        kernel_size,
+                        1,
+                        dilation=1,
+                        padding=get_padding(kernel_size, 1),
+                        padding_mode="reflect",
+                    )
+                )
+                for _ in range(3)
+            ]
+        )
+        self.convs2.apply(init_weights)
+
+        self.adain1 = nn.ModuleList(
+            [
+                AdaWinInstance1d(
+                    channels=channels, window_length=window_length, style_dim=style_dim
+                )
+                for _ in range(3)
+            ]
+        )
+
+        self.adain2 = nn.ModuleList(
+            [
+                AdaWinInstance1d(
+                    channels=channels, window_length=window_length, style_dim=style_dim
+                ),
+                AdaWinInstance1d(
+                    channels=channels, window_length=window_length, style_dim=style_dim
+                ),
+                AdaWinInstance1d(
+                    channels=channels, window_length=window_length, style_dim=style_dim
+                ),
+            ]
+        )
+
+        self.alpha1 = nn.ParameterList(
+            [nn.Parameter(torch.ones(1, channels, 1)) for i in range(len(self.convs1))]
+        )
+        self.alpha2 = nn.ParameterList(
+            [nn.Parameter(torch.ones(1, channels, 1)) for i in range(len(self.convs2))]
+        )
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x, s, lengths):
+        for c1, c2, n1, n2, a1, a2 in zip(
+            self.convs1, self.convs2, self.adain1, self.adain2, self.alpha1, self.alpha2
+        ):
+            xt = n1(x, s, lengths)
+            xt = c1(self.dropout(xt))
+            xt = n2(xt, s, lengths)
+            xt = c2(self.dropout(xt))
             x = xt + x
         return x
 
@@ -258,7 +361,10 @@ class AdaWinInstance1d(nn.Module):
         self.norm = WindowedNorm1d(channels=channels)
         self.fc = weight_norm(nn.Linear(style_dim, channels * 2))
         self.pool = nn.AvgPool1d(
-            kernel_size=window_length, stride=1, padding=window_length // 2
+            kernel_size=window_length,
+            stride=1,
+            padding=window_length // 2,
+            count_include_pad=False,
         )
 
     def forward(self, x, s, lengths):
@@ -286,7 +392,10 @@ class AdaWinLayer1d(nn.Module):
         self.norm = WindowedNorm1d(channels=1)
         self.fc = nn.Linear(style_dim, 2)
         self.pool = nn.AvgPool1d(
-            kernel_size=window_length, stride=1, padding=window_length // 2
+            kernel_size=window_length,
+            stride=1,
+            padding=window_length // 2,
+            count_include_pad=False,
         )
 
     def forward(self, x, s, lengths):
