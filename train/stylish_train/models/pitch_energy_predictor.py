@@ -9,6 +9,7 @@ from .adawin import AdaWinBlock1d, AdaPitchBlock1d
 from .text_encoder import TextEncoder
 from .fine_style_encoder import FineStyleEncoder
 from .prosody_encoder import ProsodyEncoder
+from .rmvpe import PitchModel
 
 
 class PitchEnergyPredictor(torch.nn.Module):
@@ -38,26 +39,31 @@ class PitchEnergyPredictor(torch.nn.Module):
             d_hid + style_dim, d_hid // 2, 1, batch_first=True, bidirectional=True
         )
 
-        self.F0_in = nn.Conv1d(d_hid, 128, 1, 1, 0)
-        self.F0 = nn.ModuleList(
-            [
-                # AdaWinBlock1d(
-                #     dim_in=d_hid,
-                #     dim_out=d_hid,
-                #     style_dim=style_dim,
-                #     window_length=norm_window_length,
-                #     dropout_p=dropout,
-                # )
-                AdaPitchBlock1d(
-                    channels=128,
-                    style_dim=style_dim,
-                    window_length=norm_window_length,
-                    kernel_size=23,
-                    dilation=[1, 3, 1],
-                    dropout=dropout,
-                )
-                for _ in range(4)
-            ]
+        # self.F0_in = nn.Conv1d(d_hid, 128, 1, 1, 0)
+        # self.F0 = nn.ModuleList(
+        #     [
+        #         # AdaWinBlock1d(
+        #         #     dim_in=d_hid,
+        #         #     dim_out=d_hid,
+        #         #     style_dim=style_dim,
+        #         #     window_length=norm_window_length,
+        #         #     dropout_p=dropout,
+        #         # )
+        #         AdaPitchBlock1d(
+        #             channels=128,
+        #             style_dim=style_dim,
+        #             window_length=norm_window_length,
+        #             kernel_size=23,
+        #             dilation=[1, 3, 1],
+        #             dropout=dropout,
+        #         )
+        #         for _ in range(4)
+        #     ]
+        # )
+        self.pitch_model = PitchModel(
+            n_blocks=4,
+            n_gru=1,
+            kernel_size=(2, 2),
         )
 
         self.N = nn.ModuleList(
@@ -73,7 +79,7 @@ class PitchEnergyPredictor(torch.nn.Module):
             ]
         )
 
-        self.F0_proj = nn.Conv1d(128, 1, 1, 1, 0)
+        # self.F0_proj = nn.Conv1d(128, 1, 1, 1, 0)
         self.N_proj = nn.Conv1d(d_hid, 1, 1, 1, 0)
 
     def forward(self, texts, lengths, alignment):
@@ -86,17 +92,18 @@ class PitchEnergyPredictor(torch.nn.Module):
         x = rearrange(x, "b l c -> b c l")
         x = x @ alignment
         x = rearrange(x, "b c l -> b l c")
+
+        # F0 = x.transpose(-1, -2)
+        # F0 = self.F0_in(F0)
+        # for block in self.F0:
+        #     F0 = block(F0, s, lengths)
+        # F0 = self.F0_proj(F0)
+        hidden_vec, F0 = self.pitch_model(x)
+
         x, _ = self.shared(x)
-
-        F0 = x.transpose(-1, -2)
-        F0 = self.F0_in(F0)
-        for block in self.F0:
-            F0 = block(F0, s, lengths)
-        F0 = self.F0_proj(F0)
-
         N = x.transpose(-1, -2)
         for block in self.N:
             N = block(N, s, lengths)
         N = self.N_proj(N)
 
-        return F0.squeeze(1), N.squeeze(1)
+        return F0, N.squeeze(1), hidden_vec
