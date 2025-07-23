@@ -126,13 +126,13 @@ class RingformerGenerator(torch.nn.Module):
                 zip(resblock_kernel_sizes, resblock_dilation_sizes)
             ):
                 self.resblocks.append(
-                    AdaConvBlock1d(
+                    AdaINResBlock1(
                         channels=ch,
                         style_dim=style_dim,
-                        window_length=37,
+                        # window_length=37,
                         kernel_size=k,
                         dilation=d,
-                        dropout=0.1,
+                        # dropout=0.1,
                     )
                 )
             c_cur = upsample_initial_channel // (2 ** (i + 1))
@@ -140,36 +140,38 @@ class RingformerGenerator(torch.nn.Module):
             if i + 1 < len(upsample_rates):  #
                 stride_f0 = math.prod(upsample_rates[i + 1 :])
                 self.noise_convs.append(
-                    Conv1d(
-                        gen_istft_n_fft + 2,
-                        c_cur,
-                        kernel_size=stride_f0 * 2,
-                        stride=stride_f0,
-                        padding=(stride_f0 + 1) // 2,
+                    weight_norm(
+                        Conv1d(
+                            gen_istft_n_fft + 2,
+                            c_cur,
+                            kernel_size=stride_f0 * 2,
+                            stride=stride_f0,
+                            padding=(stride_f0 + 1) // 2,
+                        )
                     )
                 )
                 self.noise_res.append(
-                    AdaConvBlock1d(
+                    AdaINResBlock1(
                         channels=c_cur,
                         style_dim=style_dim,
-                        window_length=37,
+                        # window_length=37,
                         kernel_size=7,
                         dilation=[1, 3, 5],
-                        dropout=0.1,
+                        # dropout=0.1,
                     )
                 )
             else:
                 self.noise_convs.append(
-                    Conv1d(gen_istft_n_fft + 2, c_cur, kernel_size=1)
+                    weight_norm(Conv1d(gen_istft_n_fft + 2, c_cur, kernel_size=1))
                 )
                 self.noise_res.append(
-                    AdaConvBlock1d(
+                    AdaINResBlock1(
                         channels=c_cur,
                         style_dim=style_dim,
-                        window_length=37,
+                        # window_length=37,
                         kernel_size=11,
                         dilation=[1, 3, 5],
-                        dropout=0.1,
+                        # dropout=0.1,
                     )
                 )
 
@@ -203,7 +205,7 @@ class RingformerGenerator(torch.nn.Module):
             win_length=self.gen_istft_n_fft,
         )
 
-    def forward(self, mel, style, pitch, energy, lengths):
+    def forward(self, mel, style, pitch, energy):
         # x: [b,d,t]
         x = mel
         f0 = pitch
@@ -229,16 +231,16 @@ class RingformerGenerator(torch.nn.Module):
             #     x_source = self.reflection_pad(x_source)
 
             s = torch.nn.functional.interpolate(s, size=x.shape[2], mode="nearest")
-            x_source = self.noise_res[i](x_source, s, lengths)
+            x_source = self.noise_res[i](x_source, s)
 
             x = x + x_source
 
             xs = None
             for j in range(self.num_kernels):
                 if xs is None:
-                    xs = self.resblocks[i * self.num_kernels + j](x, s, lengths)
+                    xs = self.resblocks[i * self.num_kernels + j](x, s)
                 else:
-                    xs += self.resblocks[i * self.num_kernels + j](x, s, lengths)
+                    xs += self.resblocks[i * self.num_kernels + j](x, s)
             x = xs / self.num_kernels
 
         x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)

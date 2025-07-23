@@ -24,7 +24,7 @@ from .text_encoder import TextEncoder
 from .fine_style_encoder import FineStyleEncoder
 from .decoder import Decoder
 from .ringformer import RingformerGenerator
-
+from .pitch_energy_predictor import PitchEnergyPredictor
 from .speech_predictor import SpeechPredictor
 
 from munch import Munch
@@ -49,9 +49,19 @@ def build_model(model_config: ModelConfig):
         duration_config=model_config.duration_predictor,
     )
 
+    pitch_energy_predictor = PitchEnergyPredictor(
+        style_dim=model_config.style_dim,
+        inter_dim=model_config.inter_dim,
+        text_config=model_config.text_encoder,
+        style_config=model_config.style_encoder,
+        duration_config=model_config.duration_predictor,
+        pitch_energy_config=model_config.pitch_energy_predictor,
+    )
+
     nets = Munch(
         text_aligner=text_aligner,
         duration_predictor=duration_predictor,
+        pitch_energy_predictor=pitch_energy_predictor,
         speech_predictor=SpeechPredictor(model_config),
         mpd=MultiPeriodDiscriminator(),
         msbd=MultiScaleSubbandCQTDiscriminator(sample_rate=model_config.sample_rate),

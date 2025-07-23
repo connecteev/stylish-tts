@@ -21,15 +21,6 @@ class SpeechPredictor(torch.nn.Module):
             model_config.style_encoder,
         )
 
-        self.pitch_energy_predictor = PitchEnergyPredictor(
-            style_dim=model_config.style_dim,
-            inter_dim=model_config.inter_dim,
-            text_config=model_config.text_encoder,
-            style_config=model_config.style_encoder,
-            duration_config=model_config.duration_predictor,
-            pitch_energy_config=model_config.pitch_energy_predictor,
-        )
-
         self.decoder = Decoder(
             dim_in=model_config.inter_dim,
             style_dim=model_config.style_dim,
@@ -50,27 +41,25 @@ class SpeechPredictor(torch.nn.Module):
             sample_rate=model_config.sample_rate,
         )
 
-    def acoustic_train(
-        self, texts, text_lengths, mel_lengths, alignment, pitch, energy
-    ):
+    def forward(self, texts, text_lengths, alignment, pitch, energy):
         text_encoding, _, _ = self.text_encoder(texts, text_lengths)
         style = self.style_encoder(text_encoding, text_lengths)
         mel, f0_curve = self.decoder(
-            text_encoding @ alignment, pitch, energy, style @ alignment, mel_lengths
+            text_encoding @ alignment,
+            pitch,
+            energy,
+            style @ alignment,
         )
         prediction = self.generator(
             mel=mel,
             style=style @ alignment,
             pitch=f0_curve,
             energy=energy,
-            lengths=mel_lengths,
         )
-        prediction.pitch = pitch
-        prediction.energy = energy
         return prediction
 
-    def forward(self, texts, text_lengths, mel_lengths, alignment):
-        pitch, energy = self.pitch_energy_predictor(texts, text_lengths, alignment)
-        return self.acoustic_train(
-            texts, text_lengths, mel_lengths, alignment, pitch, energy
-        )
+    # def forward(self, texts, text_lengths, mel_lengths, alignment):
+    #     pitch, energy = self.pitch_energy_predictor(texts, text_lengths, mel_lengths, alignment)
+    #     return self.acoustic_train(
+    #         texts, text_lengths, mel_lengths, alignment, pitch, energy
+    #     )

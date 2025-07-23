@@ -44,7 +44,7 @@ def validate_alignment(batch, train):
 def validate_duration(batch, train):
     # state = BatchContext(train=train, model=train.model)
     # duration = state.predict_duration(batch)
-    duration = model.duration_predictor(batch.text, batch.text_length)
+    duration = train.model.duration_predictor(batch.text, batch.text_length)
     log = build_loss_log(train)
     loss_ce, loss_dur = compute_duration_ce_loss(
         duration,
@@ -60,11 +60,11 @@ def validate_duration(batch, train):
 @torch.no_grad()
 def validate_acoustic(batch, train):
     energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
+    pred_pitch, pred_energy = train.model.pitch_energy_predictor(
+        batch.text, batch.text_length, batch.alignment
+    )
     pred = train.model.speech_predictor(
-        batch.text,
-        batch.text_length,
-        batch.mel_length,
-        batch.alignment,
+        batch.text, batch.text_length, batch.alignment, batch.pitch, energy
     )
     # state = BatchContext(train=train, model=train.model)
     # pred = state.acoustic_prediction_single(batch)
@@ -72,19 +72,22 @@ def validate_acoustic(batch, train):
     train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
     log.add_loss(
         "pitch",
-        torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
+        torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
     )
     log.add_loss(
         "energy",
-        torch.nn.functional.smooth_l1_loss(energy, pred.energy),
+        torch.nn.functional.smooth_l1_loss(energy, pred_energy),
     )
     return log, batch.alignment[0], pred.audio, batch.audio_gt
 
 
 @torch.no_grad()
 def validate_textual(batch, train):
+    pred_pitch, pred_energy = train.model.pitch_energy_predictor(
+        batch.text, batch.text_length, batch.alignment
+    )
     pred = train.model.speech_predictor(
-        batch.text, batch.text_length, batch.mel_length, batch.alignment
+        batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
     )
     energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
     # state = BatchContext(train=train, model=train.model)
@@ -94,9 +97,9 @@ def validate_textual(batch, train):
     train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
     log.add_loss(
         "pitch",
-        torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
+        torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
     )
-    log.add_loss("energy", torch.nn.functional.smooth_l1_loss(energy, pred.energy))
+    log.add_loss("energy", torch.nn.functional.smooth_l1_loss(energy, pred_energy))
     # loss_ce, loss_dur = compute_duration_ce_loss(
     #     state.duration_prediction,
     #     batch.alignment.sum(dim=-1),

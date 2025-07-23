@@ -58,10 +58,10 @@ def train_acoustic(
         with torch.no_grad():
             energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
         pred = model.speech_predictor(
-            batch.text,
-            batch.text_length,
-            batch.mel_length,
-            batch.alignment,
+            batch.text, batch.text_length, batch.alignment, batch.pitch, energy
+        )
+        pred_pitch, pred_energy = model.pitch_energy_predictor(
+            batch.text, batch.text_length, batch.alignment
         )
         print_gpu_vram("predicted")
         train.stage.optimizer.zero_grad()
@@ -90,11 +90,11 @@ def train_acoustic(
 
         log.add_loss(
             "pitch",
-            torch.nn.functional.smooth_l1_loss(batch.pitch, pred.pitch),
+            torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
         )
         log.add_loss(
             "energy",
-            torch.nn.functional.smooth_l1_loss(energy, pred.energy),
+            torch.nn.functional.smooth_l1_loss(energy, pred_energy),
         )
 
         train.accelerator.backward(
@@ -110,11 +110,11 @@ def train_textual(
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:
     # state = BatchContext(train=train, model=model)
     with train.accelerator.autocast():
-        # pred = model.speech_predictor(
-        #     batch.text, batch.text_length, batch.mel_length, batch.alignment
-        # )
-        pred_pitch, pred_energy = model.speech_predictor.pitch_energy_predictor(
+        pred_pitch, pred_energy = model.pitch_energy_predictor(
             batch.text, batch.text_length, batch.alignment
+        )
+        pred = model.speech_predictor(
+            batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
         )
         with torch.no_grad():
             energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
@@ -123,7 +123,7 @@ def train_textual(
         # pitch = state.calculate_pitch(batch)
         train.stage.optimizer.zero_grad()
         log = build_loss_log(train)
-        # train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
+        train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
         # log.add_loss(
         #     "generator",
         #     train.generator_loss(

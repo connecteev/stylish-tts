@@ -118,43 +118,43 @@ class Decoder(nn.Module):
         norm_window_length = 37
         self.decode = nn.ModuleList()
 
-        self.encode = AdaWinBlock1d(
+        self.encode = AdainResBlk1d(
             dim_in=dim_in + 2,
             dim_out=hidden_dim,
             style_dim=style_dim,
-            window_length=norm_window_length,
+            # window_length=norm_window_length,
         )
 
         self.decode.append(
-            AdaWinBlock1d(
+            AdainResBlk1d(
                 dim_in=hidden_dim + 2 + residual_dim,
                 dim_out=hidden_dim,
                 style_dim=style_dim,
-                window_length=norm_window_length,
+                # window_length=norm_window_length,
             )
         )
         self.decode.append(
-            AdaWinBlock1d(
+            AdainResBlk1d(
                 dim_in=hidden_dim + 2 + residual_dim,
                 dim_out=hidden_dim,
                 style_dim=style_dim,
-                window_length=norm_window_length,
+                # window_length=norm_window_length,
             )
         )
         self.decode.append(
-            AdaWinBlock1d(
+            AdainResBlk1d(
                 dim_in=hidden_dim + 2 + residual_dim,
                 dim_out=hidden_dim,
                 style_dim=style_dim,
-                window_length=norm_window_length,
+                # window_length=norm_window_length,
             )
         )
         self.decode.append(
-            AdaWinBlock1d(
+            AdainResBlk1d(
                 dim_in=hidden_dim + 2 + residual_dim,
                 dim_out=dim_out,
                 style_dim=style_dim,
-                window_length=norm_window_length,
+                # window_length=norm_window_length,
             )
         )
 
@@ -170,7 +170,7 @@ class Decoder(nn.Module):
             weight_norm(nn.Conv1d(dim_in, residual_dim, kernel_size=1)),
         )
 
-    def forward(self, asr, F0_curve, N, s, lengths, probing=False):
+    def forward(self, asr, F0_curve, N, s, probing=False):
         # F0_down = 3
         # N_down = 3
         # if F0_down:
@@ -196,12 +196,12 @@ class Decoder(nn.Module):
         N = self.N_conv(N.unsqueeze(1))
 
         x = torch.cat([asr, F0, N], axis=1)
-        x = self.encode(x, s, lengths)
+        x = self.encode(x, s)
 
         asr_res = self.asr_res(asr)
 
         for block in self.decode:
             x = torch.cat([x, asr_res, F0, N], axis=1)
-            x = block(x, s, lengths)
+            x = block(x, s)
 
         return x, F0_curve

@@ -21,11 +21,11 @@ def convert_to_onnx(model_config: ModelConfig, out_dir, model_in, device):
     text_cleaner = TextCleaner(model_config.symbol)
     model = ExportModel(**model_in, device=device).eval()
     stft = STFT(
-        filter_length=model.generator.gen_istft_n_fft,
-        hop_length=model.generator.gen_istft_hop_size,
-        win_length=model.generator.gen_istft_n_fft,
+        filter_length=model.speech_predictor.generator.gen_istft_n_fft,
+        hop_length=model.speech_predictor.generator.gen_istft_hop_size,
+        win_length=model.speech_predictor.generator.gen_istft_n_fft,
     )
-    model.generator.stft = stft.to(device).eval()
+    model.speech_predictor.generator.stft = stft.to(device).eval()
 
     tokens = (
         torch.tensor(
