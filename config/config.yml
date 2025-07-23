@@ -31,7 +31,7 @@ training_plan:
     lr: 1e-4
   textual:
     # training for duration/pitch/energy from text
-    epochs: 5
+    epochs: 20
     probe_batch_max: 32
     lr: 1e-4
 
