@@ -66,14 +66,17 @@ class STFTLoss(torch.nn.Module):
             Tensor: Log STFT magnitude loss value.
         """
         x_mag = self.to_mel(x)
-        mean, std = -4, 4
-        x_mag = (torch.log(1e-5 + x_mag) - mean) / std
+        # mean, std = -4, 4
+        # x_mag = (torch.log(1e-5 + x_mag) - mean) / std
+        x_mag = torch.pow(x_mag, 0.33)
 
         y_mag = self.to_mel(y)
-        mean, std = -4, 4
-        y_mag = (torch.log(1e-5 + y_mag) - mean) / std
+        # mean, std = -4, 4
+        # y_mag = (torch.log(1e-5 + y_mag) - mean) / std
+        y_mag = torch.pow(y_mag, 0.33)
 
         sc_loss = self.spectral_convergence_loss(x_mag, y_mag)
+        # sc_loss = F.smooth_l1_loss(x_mag, y_mag)
         return sc_loss
 
 
@@ -86,15 +89,15 @@ class Resolution:
 
 
 resolutions = [
-    # Resolution(fft=256, hop=31, window=67, mels=40),
-    # Resolution(fft=256, hop=67, window=127, mels=40),
-    # Resolution(fft=512, hop=127, window=257, mels=80),
-    # Resolution(fft=1024, hop=257, window=509, mels=120),
-    # Resolution(fft=2048, hop=509, window=1021, mels=120),
-    # Resolution(fft=4096, hop=1021, window=2053, mels=120),
-    Resolution(fft=1024, hop=120, window=600, mels=128),
-    Resolution(fft=2048, hop=240, window=1200, mels=128),
-    Resolution(fft=512, hop=50, window=240, mels=128),
+    Resolution(fft=2048, hop=24, window=67, mels=120),
+    Resolution(fft=2048, hop=24, window=127, mels=120),
+    Resolution(fft=2048, hop=24, window=257, mels=120),
+    Resolution(fft=2048, hop=24, window=509, mels=120),
+    Resolution(fft=2048, hop=24, window=1021, mels=120),
+    Resolution(fft=2048, hop=24, window=2048, mels=120),
+    # Resolution(fft=1024, hop=120, window=600, mels=128),
+    # Resolution(fft=2048, hop=240, window=1200, mels=128),
+    # Resolution(fft=512, hop=50, window=240, mels=128),
 ]
 
 
@@ -171,7 +174,7 @@ class MagPhaseLoss(torch.nn.Module):
             )
             target_mag = torch.abs(y_stft)
             target_phase = torch.angle(y_stft)
-            mag_loss = torch.nn.functional.l1_loss(mag, target_mag)
+            mag_loss = torch.nn.functional.l1_loss(mag**0.33, target_mag**0.33)
             phase_loss = torch.nn.functional.l1_loss(phase, target_phase)
             result = mag_loss + phase_loss
         return result
@@ -229,7 +232,11 @@ class DiscriminatorLossHelper(torch.nn.Module):
     def get_disc_lr_multiplier(self):
         x = abs(self.last_loss - self.ideal_loss)
         result = 1.0
-        if self.last_loss > self.ideal_loss:
+        if self.last_loss > self.ideal_loss + self.ideal_loss * self.x_max:
+            result = self.f_max
+        elif self.last_loss < self.ideal_loss - self.ideal_loss * self.x_min:
+            result = self.h_min
+        elif self.last_loss > self.ideal_loss:
             result = min(math.pow(self.f_max, x / self.x_max), self.f_max)
         else:
             result = max(math.pow(self.h_min, x / self.x_min), self.h_min)

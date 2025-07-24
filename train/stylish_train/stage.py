@@ -90,7 +90,7 @@ stages = {
             "speech_predictor",
         ],
         eval_models=[],
-        discriminators=["mpd", "mrd"],
+        discriminators=["mrd"],
         inputs=[
             "text",
             "text_length",

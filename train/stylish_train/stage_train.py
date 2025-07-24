@@ -72,7 +72,7 @@ def train_acoustic(
         log.add_loss(
             "generator",
             train.generator_loss(
-                batch.audio_gt.detach().unsqueeze(1).float(), pred.audio, ["mpd", "mrd"]
+                batch.audio_gt.detach().unsqueeze(1).float(), pred.audio, ["mrd"]
             ).mean(),
         )
         print_gpu_vram("generator_loss")
@@ -96,7 +96,6 @@ def train_acoustic(
             "energy",
             torch.nn.functional.smooth_l1_loss(energy, pred.energy),
         )
-
         train.accelerator.backward(
             log.backwards_loss() * math.sqrt(batch.text.shape[0])
         )

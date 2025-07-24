@@ -71,7 +71,8 @@ def log_norm(x, mean=-4, std=4, dim=2):
     """
     normalized log mel -> mel -> norm -> log(norm)
     """
-    x = torch.log(torch.exp(x * std + mean).norm(dim=dim))
+    # x = torch.log(torch.exp(x * std + mean).norm(dim=dim))
+    x = (torch.exp(x * std + mean) ** 0.33).sum(dim=dim)
     return x
 
 

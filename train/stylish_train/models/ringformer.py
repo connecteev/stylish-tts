@@ -244,7 +244,8 @@ class RingformerGenerator(torch.nn.Module):
         x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
         x = self.conv_post(x)
 
-        spec = torch.exp(x[:, : self.post_n_fft // 2 + 1, :])
+        spec = x[:, : self.post_n_fft // 2 + 1, :]
+        spec = spec.abs() ** 3 + 1e-9
         phase = torch.sin(x[:, self.post_n_fft // 2 + 1 :, :])
         out = self.stft.inverse(spec, phase).to(x.device)
         return DecoderPrediction(audio=out, magnitude=spec, phase=phase)
