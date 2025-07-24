@@ -98,7 +98,7 @@ class RingformerGenerator(torch.nn.Module):
             voiced_threshod=10,
         )
         self.f0_upsamp = torch.nn.Upsample(
-            scale_factor=math.prod(upsample_rates) * gen_istft_hop_size
+            scale_factor=math.prod(upsample_rates) * gen_istft_hop_size, mode="linear"
         )
         self.noise_convs = nn.ModuleList()
         self.noise_res = nn.ModuleList()
