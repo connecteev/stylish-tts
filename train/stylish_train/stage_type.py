@@ -1,12 +1,23 @@
 import random
-from typing import Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 import torch
 from torch.nn import functional as F
 import torchaudio
 from einops import rearrange
 from loss_log import LossLog, build_loss_log
 from losses import compute_duration_ce_loss
-from utils import print_gpu_vram, log_norm
+from utils import print_gpu_vram, log_norm, duration_to_alignment
+
+
+stages = {}
+
+
+def is_valid_stage(name):
+    return name in stages
+
+
+def valid_stage_list():
+    return list(stages.keys())
 
 
 class StageType:
@@ -29,33 +40,7 @@ class StageType:
         self.inputs: List[str] = inputs
 
 
-stages = {}
-
-
-def is_valid_stage(name):
-    return name in stages
-
-
-def valid_stage_list():
-    return list(stages.keys())
-
-
 ##### Alignment #####
-
-stages["alignment"] = StageType(
-    next_stage=None,
-    train_fn=train_alignment,
-    validate_fn=validate_alignment,
-    train_models=["text_aligner"],
-    eval_models=[],
-    discriminators=[],
-    inputs=[
-        "text",
-        "text_length",
-        "align_mel",
-        "mel_length",
-    ],
-)
 
 
 def train_alignment(
@@ -107,25 +92,22 @@ def validate_alignment(batch, train):
     return log, None, None, None
 
 
-##### Acoustic #####
-
-stages["acoustic"] = StageType(
-    next_stage="textual",
-    train_fn=train_acoustic,
-    validate_fn=validate_acoustic,
-    train_models=["speech_predictor", "pitch_energy_predictor"],
+stages["alignment"] = StageType(
+    next_stage=None,
+    train_fn=train_alignment,
+    validate_fn=validate_alignment,
+    train_models=["text_aligner"],
     eval_models=[],
-    discriminators=["mrd"],
+    discriminators=[],
     inputs=[
         "text",
         "text_length",
-        "mel",
+        "align_mel",
         "mel_length",
-        "audio_gt",
-        "pitch",
-        "alignment",
     ],
 )
+
+##### Acoustic #####
 
 
 def train_acoustic(
@@ -202,15 +184,13 @@ def validate_acoustic(batch, train):
     return log, batch.alignment[0], pred.audio, batch.audio_gt
 
 
-##### Textual #####
-
-stages["textual"] = StageType(
-    next_stage="duration",
-    train_fn=train_textual,
-    validate_fn=validate_textual,
-    train_models=["pitch_energy_predictor"],
-    eval_models=["speech_predictor"],
-    discriminators=[],
+stages["acoustic"] = StageType(
+    next_stage="textual",
+    train_fn=train_acoustic,
+    validate_fn=validate_acoustic,
+    train_models=["speech_predictor", "pitch_energy_predictor"],
+    eval_models=[],
+    discriminators=["mrd"],
     inputs=[
         "text",
         "text_length",
@@ -221,6 +201,8 @@ stages["textual"] = StageType(
         "alignment",
     ],
 )
+
+##### Textual #####
 
 
 def train_textual(
@@ -270,24 +252,25 @@ def validate_textual(batch, train):
     return log, batch.alignment[0], pred.audio, batch.audio_gt
 
 
-##### Duration #####
-
-stages["duration"] = StageType(
-    next_stage=None,
-    train_fn=train_duration,
-    validate_fn=validate_duration,
-    train_models=[
-        "duration_predictor",
-    ],
-    eval_models=[],
+stages["textual"] = StageType(
+    next_stage="duration",
+    train_fn=train_textual,
+    validate_fn=validate_textual,
+    train_models=["pitch_energy_predictor"],
+    eval_models=["speech_predictor"],
     discriminators=[],
     inputs=[
         "text",
         "text_length",
-        "alignment",
+        "mel",
+        "mel_length",
         "audio_gt",
+        "pitch",
+        "alignment",
     ],
 )
+
+##### Duration #####
 
 
 def train_duration(
@@ -311,26 +294,28 @@ def train_duration(
 @torch.no_grad()
 def validate_duration(batch, train):
     duration = train.model.duration_predictor(batch.text, batch.text_length)
-    pred_pitch, pred_energy = train.model.pitch_energy_predictor(
-        batch.text, batch.text_length, batch.alignment
-    )
     results = []
     max_length = 0
     for i in range(duration.shape[0]):
-        alignment = duration_to_alignment(duration[i])
+        dur = torch.sigmoid(duration[i]).sum(axis=-1)
+        dur = torch.round(dur).clamp(min=1).long()
+        alignment = duration_to_alignment(dur)
         alignment = rearrange(alignment, "t a -> 1 t a")
+        pred_pitch, pred_energy = train.model.pitch_energy_predictor(
+            batch.text[i : i + 1], batch.text_length[i : i + 1], alignment
+        )
         pred = train.model.speech_predictor(
             batch.text[i : i + 1],
             batch.text_length[i : i + 1],
             alignment,
-            pred_pitch[i : i + 1],
-            pred_energy[i : i + 1],
+            pred_pitch,
+            pred_energy,
         )
-        if pred.audio.shape[1] > max_length:
-            max_length = pred.audio.shape[1]
-        results.append(pred.audio)
+        audio = rearrange(pred.audio, "1 1 l -> l")
+        if audio.shape[0] > max_length:
+            max_length = audio.shape[0]
+        results.append(audio)
     for i in range(len(results)):
-        results[i] = rearrange(results[i], "1 l -> l")
         results[i] = torch.nn.functional.pad(
             results[i], (0, max_length - results[i].shape[0])
         )
@@ -344,4 +329,22 @@ def validate_duration(batch, train):
     log.add_loss("duration_ce", loss_ce)
     log.add_loss("duration", loss_dur)
 
-    return log.detach(), None, results, batch.audio_gt
+    return log.detach(), alignment[0], results, batch.audio_gt
+
+
+stages["duration"] = StageType(
+    next_stage=None,
+    train_fn=train_duration,
+    validate_fn=validate_duration,
+    train_models=[
+        "duration_predictor",
+    ],
+    eval_models=["pitch_energy_predictor", "speech_predictor"],
+    discriminators=[],
+    inputs=[
+        "text",
+        "text_length",
+        "alignment",
+        "audio_gt",
+    ],
+)

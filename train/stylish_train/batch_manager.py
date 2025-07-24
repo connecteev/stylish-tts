@@ -73,7 +73,7 @@ class BatchManager:
             )
 
         # Use up 200 MB of VRAM during probing to make our batch size estimates conservative
-        lodestone = torch.zeros([50, 1000, 1000], dtype=torch.fp32, device=self.device)
+        lodestone = torch.zeros([50, 1000, 1000], dtype=torch.float, device=self.device)
         train.stage.reset_batch_sizes()
         batch_size = self.probe_batch_max
         time_keys = sorted(list(self.time_bins.keys()))

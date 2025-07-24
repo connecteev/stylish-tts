@@ -11,7 +11,7 @@ import torch
 import torchaudio
 import torch.utils.data
 from safetensors import safe_open
-from .utils import duration_to_alignment
+from utils import duration_to_alignment
 
 import logging
 
@@ -327,7 +327,7 @@ class Collater(object):
                         pred_dur[i] -= 1
                         pred_dur[i + 1] += 1
             alignment = duration_to_alignment(pred_dur)
-            if pred_aln_trg.shape[1] == mel_size:
+            if alignment.shape[1] == mel_size:
                 alignments[bid, :text_size, :mel_size] = alignment
 
         result = (
