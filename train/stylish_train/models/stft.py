@@ -126,21 +126,25 @@ class STFT(torch.nn.Module):
 
         # magnitude, phase
         magnitude = torch.sqrt(real_out**2 + imag_out**2 + 1e-14)
-        phase = torch.atan2(imag_out, real_out)
-        # Handle the case where imag_out is 0 and real_out is negative to correct ONNX atan2 to match PyTorch
-        # In this case, PyTorch returns pi, ONNX returns -pi
-        correction_mask = (imag_out == 0) & (real_out < 0)
-        phase[correction_mask] = torch.pi
-        return magnitude, phase
+        # phase = torch.atan2(imag_out, real_out)
+        # # Handle the case where imag_out is 0 and real_out is negative to correct ONNX atan2 to match PyTorch
+        # # In this case, PyTorch returns pi, ONNX returns -pi
+        # correction_mask = (imag_out == 0) & (real_out < 0)
+        # phase[correction_mask] = torch.pi
+        x_out = real_out / magnitude
+        y_out = imag_out / magnitude
+        return magnitude, x_out, y_out
 
-    def inverse(self, magnitude: torch.Tensor, phase: torch.Tensor, length=None):
+    def inverse(
+        self, magnitude: torch.Tensor, x: torch.Tensor, y: torch.Tensor, length=None
+    ):
         """
         Inverse STFT => returns waveform shape (B, T).
         """
         # magnitude, phase => (B, freq_bins, frames)
         # Re-create real/imag => shape (B, freq_bins, frames)
-        real_part = magnitude * torch.cos(phase)
-        imag_part = magnitude * torch.sin(phase)
+        real_part = magnitude * x
+        imag_part = magnitude * y
 
         # conv_transpose wants shape (B, freq_bins, frames). We'll treat "frames" as time dimension
         # so we do (B, freq_bins, frames) => (B, freq_bins, frames)
@@ -182,10 +186,10 @@ class STFT(torch.nn.Module):
         # shape => (B, T)
         return waveform
 
-    def forward(self, x: torch.Tensor):
-        """
-        Full STFT -> iSTFT pass: returns time-domain reconstruction.
-        Same interface as your original code.
-        """
-        mag, phase = self.transform(x)
-        return self.inverse(mag, phase, length=x.shape[-1])
+    # def forward(self, x: torch.Tensor):
+    #     """
+    #     Full STFT -> iSTFT pass: returns time-domain reconstruction.
+    #     Same interface as your original code.
+    #     """
+    #     mag, phase = self.transform(x)
+    #     return self.inverse(mag, phase, length=x.shape[-1])

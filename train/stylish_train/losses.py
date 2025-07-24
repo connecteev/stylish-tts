@@ -161,9 +161,8 @@ class MagPhaseLoss(torch.nn.Module):
         self.n_fft = n_fft
         self.hop_length = hop_length
 
-    def forward(self, mag, phase, gt):
-        result = 0.0
-        if mag is not None and phase is not None:
+    def forward(self, pred, gt, log):
+        if pred.magnitude is not None and pred.x is not None and pred.y is not None:
             y_stft = torch.stft(
                 gt,
                 n_fft=self.n_fft,
@@ -172,12 +171,15 @@ class MagPhaseLoss(torch.nn.Module):
                 return_complex=True,
                 window=self.window,
             )
-            target_mag = torch.abs(y_stft)
-            target_phase = torch.angle(y_stft)
-            mag_loss = torch.nn.functional.l1_loss(mag**0.33, target_mag**0.33)
-            phase_loss = torch.nn.functional.l1_loss(phase, target_phase)
-            result = mag_loss + phase_loss
-        return result
+            target_mag = torch.abs(y_stft) + 1e-14
+            target_x = torch.real(y_stft) / target_mag
+            target_y = torch.imag(y_stft) / target_mag
+            log.add_loss(
+                "mag",
+                torch.nn.functional.l1_loss(pred.magnitude**0.33, target_mag**0.33),
+            )
+            log.add_loss("phase_x", torch.nn.functional.l1_loss(pred.x, target_x))
+            log.add_loss("phase_y", torch.nn.functional.l1_loss(pred.y, target_y))
 
 
 class DiscriminatorLoss(torch.nn.Module):

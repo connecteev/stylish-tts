@@ -43,26 +43,27 @@ class TorchSTFT(torch.nn.Module):
             window=self.window,
             return_complex=True,
         )
+        mag = torch.abs(forward_transform) + 1e-9
+        x = torch.real(forward_transform) / mag
+        y = torch.imag(forward_transform) / mag
+        return torch.abs(forward_transform), x, y
 
-        return torch.abs(forward_transform), torch.angle(forward_transform)
-
-    def inverse(self, magnitude, phase):
+    def inverse(self, magnitude, x, y):
         inverse_transform = torch.istft(
-            magnitude * torch.exp(phase * 1j),
+            magnitude * (x + y * 1j),
             self.filter_length,
             self.hop_length,
             self.win_length,
             window=self.window,
         )
 
-        return inverse_transform.unsqueeze(
-            -2
-        )  # unsqueeze to stay consistent with conv_transpose1d implementation
+        # unsqueeze to stay consistent with conv_transpose1d implementation
+        return inverse_transform.unsqueeze(-2)
 
-    def forward(self, input_data):
-        self.magnitude, self.phase = self.transform(input_data)
-        reconstruction = self.inverse(self.magnitude, self.phase)
-        return reconstruction
+    # def forward(self, input_data):
+    #     self.magnitude, self.phase = self.transform(input_data)
+    #     reconstruction = self.inverse(self.magnitude, self.phase)
+    #     return reconstruction
 
 
 def padDiff(x):
@@ -215,7 +216,8 @@ class RingformerGenerator(torch.nn.Module):
 
             har_source, noi_source, uv = self.m_source(f0)
             har_source = har_source.transpose(1, 2).squeeze(1)
-            har_spec, har_phase = self.stft.transform(har_source)
+            har_spec, har_x, har_y = self.stft.transform(har_source)
+            har_phase = torch.atan2(har_y, har_x)
             har = torch.cat([har_spec, har_phase], dim=1)
 
         for i in range(self.num_upsamples):
@@ -248,9 +250,11 @@ class RingformerGenerator(torch.nn.Module):
 
         spec = x[:, : self.post_n_fft // 2 + 1, :]
         spec = spec.abs() ** 3 + 1e-9
-        phase = torch.sin(x[:, self.post_n_fft // 2 + 1 :, :])
-        out = self.stft.inverse(spec, phase).to(x.device)
-        return DecoderPrediction(audio=out, magnitude=spec, phase=phase)
+        phase = x[:, self.post_n_fft // 2 + 1 :, :]
+        x_phase = torch.cos(phase)
+        y_phase = torch.sin(phase)
+        out = self.stft.inverse(spec, x_phase, y_phase).to(x.device)
+        return DecoderPrediction(audio=out, magnitude=spec, x=x_phase, y=y_phase)
 
     def remove_weight_norm(self):
         print("Removing weight norm...")

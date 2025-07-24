@@ -81,11 +81,7 @@ def train_acoustic(
             train.wavlm_loss(batch.audio_gt.detach(), pred.audio),
         )
         print_gpu_vram("slm_loss")
-        if pred.magnitude is not None and pred.phase is not None:
-            log.add_loss(
-                "magphase",
-                train.magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
-            )
+        train.magphase_loss(pred, batch.audio_gt, log)
         print_gpu_vram("magphase_loss")
 
         log.add_loss(
@@ -133,11 +129,6 @@ def train_textual(
         #     "slm",
         #     train.wavlm_loss(batch.audio_gt.detach(), pred.audio),
         # )
-        # if pred.magnitude is not None and pred.phase is not None:
-        #     log.add_loss(
-        #         "magphase",
-        #         train.magphase_loss(pred.magnitude, pred.phase, batch.audio_gt),
-        #     )
         log.add_loss(
             "pitch",
             torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),

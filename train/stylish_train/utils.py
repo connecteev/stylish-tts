@@ -286,13 +286,11 @@ class DecoderPrediction:
     def __init__(
         self,
         audio=None,
-        phase=None,
+        x=None,
+        y=None,
         magnitude=None,
-        pitch=None,
-        energy=None,
     ):
         self.audio = audio
-        self.phase = phase
+        self.x = x
+        self.y = y
         self.magnitude = magnitude
-        self.pitch = pitch
-        self.energy = energy
