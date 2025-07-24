@@ -10,122 +10,13 @@ import tqdm
 import matplotlib.pyplot as plt
 
 from loss_log import combine_logs
-from stage_train import (
-    train_alignment,
-    train_duration,
-    train_acoustic,
-    train_textual,
-)
-
-from stage_validate import (
-    validate_alignment,
-    validate_duration,
-    validate_acoustic,
-    validate_textual,
-)
-
+from .stage_type import stages, is_valid_stage, valid_stage_list
 from optimizers import build_optimizer
 from utils import (
     get_image,
     plot_spectrogram_to_figure,
     plot_mel_signed_difference_to_figure,
 )
-
-
-class StageConfig:
-    def __init__(
-        self,
-        next_stage: Optional[str],
-        train_fn: Callable,
-        validate_fn: Callable,
-        train_models: List[str],
-        eval_models: List[str],
-        discriminators: List[str],
-        inputs: List[str],
-    ):
-        self.next_stage: Optional[str] = next_stage
-        self.train_fn: Callable = train_fn
-        self.validate_fn: Callable = validate_fn
-        self.train_models: List[str] = train_models
-        self.eval_models: List[str] = eval_models
-        self.discriminators = discriminators
-        self.inputs: List[str] = inputs
-
-
-stages = {
-    "alignment": StageConfig(
-        next_stage=None,
-        train_fn=train_alignment,
-        validate_fn=validate_alignment,
-        train_models=["text_aligner"],
-        eval_models=[],
-        discriminators=[],
-        inputs=[
-            "text",
-            "text_length",
-            "align_mel",
-            "mel_length",
-        ],
-    ),
-    "duration": StageConfig(
-        next_stage=None,
-        train_fn=train_duration,
-        validate_fn=validate_duration,
-        train_models=[
-            "duration_predictor",
-        ],
-        eval_models=[],
-        discriminators=[],
-        inputs=[
-            "text",
-            "text_length",
-            "alignment",
-            "audio_gt",
-        ],
-    ),
-    "acoustic": StageConfig(
-        next_stage="textual",
-        train_fn=train_acoustic,
-        validate_fn=validate_acoustic,
-        train_models=["speech_predictor", "pitch_energy_predictor"],
-        eval_models=[],
-        discriminators=["mrd"],
-        inputs=[
-            "text",
-            "text_length",
-            "mel",
-            "mel_length",
-            "audio_gt",
-            "pitch",
-            "alignment",
-        ],
-    ),
-    "textual": StageConfig(
-        next_stage="duration",
-        train_fn=train_textual,
-        validate_fn=validate_textual,
-        train_models=["pitch_energy_predictor"],
-        eval_models=["speech_predictor"],
-        discriminators=[],
-        inputs=[
-            "text",
-            "text_length",
-            "mel",
-            "mel_length",
-            "audio_gt",
-            "pitch",
-            "alignment",
-        ],
-    ),
-}
-
-
-def is_valid_stage(name):
-    return name in stages
-
-
-def valid_stage_list():
-    return list(stages.keys())
 
 
 class Stage:
