@@ -55,7 +55,7 @@ class AdaWinBlock1d(nn.Module):
         x = self.conv2(self.dropout(x))
         return x
 
-    def forward(self, x, s, lengths):
+    def forward(self, x, s, lengths=None):
         out = self._residual(x, s, lengths)
         out = (out + self._shortcut(x)) / math.sqrt(2)
         return out
@@ -180,7 +180,7 @@ class AdaConvBlock1d(torch.nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, s, lengths):
+    def forward(self, x, s, lengths=None):
         for c1, c2, n1, n2, a1, a2 in zip(
             self.convs1, self.convs2, self.adain1, self.adain2, self.alpha1, self.alpha2
         ):
@@ -272,7 +272,7 @@ class AdaPitchBlock1d(torch.nn.Module):
         )
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, x, s, lengths):
+    def forward(self, x, s, lengths=None):
         for c1, c2, n1, n2, a1, a2 in zip(
             self.convs1, self.convs2, self.adain1, self.adain2, self.alpha1, self.alpha2
         ):
@@ -358,14 +358,9 @@ class AdaWinInstance1d(nn.Module):
         super().__init__()
         self.channels = channels
         self.window_length = window_length
-        self.norm = WindowedNorm1d(channels=channels)
+        self.norm = WindowedNorm1d(norm_type="instance", window_length=window_length)
         self.fc = weight_norm(nn.Linear(style_dim, channels * 2))
-        self.pool = nn.AvgPool1d(
-            kernel_size=window_length,
-            stride=1,
-            padding=window_length // 2,
-            count_include_pad=False,
-        )
+        self.pool = SumPool1d(window_length=window_length)
 
     def forward(self, x, s, lengths):
         s = rearrange(s, "b s t -> b t s")
@@ -373,15 +368,19 @@ class AdaWinInstance1d(nn.Module):
         h = rearrange(h, "b t s -> b s t")
 
         # kernel = make_kernel_instance(self.channels, self.window_length, x.device)
-        # mask = sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
-        # mask = torch.broadcast_to(mask, (x.shape[0], kernel.shape[1], x.shape[2]))
+        mask = None
+        if lengths is not None:
+            mask = (
+                sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
+            )
+            mask = torch.broadcast_to(mask, (x.shape[0], self.channels, x.shape[2]))
         gamma = h[:, : self.channels, :]
-        gamma = self.pool(gamma)
+        gamma = self.pool.mean(gamma, mask)
         # gamma = calculate_mean(gamma, mask, kernel, self.window_length)
         beta = h[:, self.channels :, :]
-        beta = self.pool(beta)
+        beta = self.pool.mean(beta, mask)
         # beta = calculate_mean(beta, mask, kernel, self.window_length)
-        return (1 + gamma) * self.norm(x) + beta
+        return (1 + gamma) * self.norm(x, mask) + beta
 
 
 class AdaWinLayer1d(nn.Module):
@@ -389,14 +388,9 @@ class AdaWinLayer1d(nn.Module):
         super().__init__()
         self.channels = channels
         self.window_length = window_length
-        self.norm = WindowedNorm1d(channels=1)
-        self.fc = nn.Linear(style_dim, 2)
-        self.pool = nn.AvgPool1d(
-            kernel_size=window_length,
-            stride=1,
-            padding=window_length // 2,
-            count_include_pad=False,
-        )
+        self.norm = WindowedNorm1d(norm_type="layer", window_length=window_length)
+        self.fc = weight_norm(nn.Linear(style_dim, 2))
+        self.pool = SumPool1d(window_length=window_length)
 
     def forward(self, x, s, lengths):
         s = rearrange(s, "b s t -> b t s")
@@ -404,29 +398,105 @@ class AdaWinLayer1d(nn.Module):
         h = rearrange(h, "b t s -> b s t")
 
         # gb_kernel = make_kernel_layer(1, self.window_length, x.device)
-        # mask = sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
+        mask = None
+        if lengths is not None:
+            mask = (
+                sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
+            )
         gamma = h[:, :1, :]
-        gamma = self.pool(gamma)
+        gamma = self.pool.mean(gamma, mask)
         # gamma = calculate_mean(gamma, mask, gb_kernel, self.window_length)
         beta = h[:, 1:, :]
-        beta = self.pool(beta)
+        beta = self.pool.mean(beta, mask)
         # beta = calculate_mean(beta, mask, gb_kernel, self.window_length)
         # kernel = make_kernel_layer(self.channels, self.window_length, x.device)
-        # mask = torch.broadcast_to(mask, (x.shape[0], kernel.shape[1], x.shape[2]))
-        return (1 + gamma) * self.norm(x) + beta
+        if lengths is not None:
+            mask = torch.broadcast_to(mask, (x.shape[0], self.channels, x.shape[2]))
+        return (1 + gamma) * self.norm(x, mask) + beta
 
 
 class WindowedNorm1d(torch.nn.Module):
-    def __init__(self, *, channels, eps=1e-5):
+    def __init__(self, *, norm_type, window_length, eps=1e-9):
         super().__init__()
         self.eps = eps
-        self.alpha = nn.Parameter(torch.ones(channels) * 0.5)
+        if norm_type == "instance":
+            self.pool = SumPool1d(window_length=window_length, eps=eps)
+        else:  # "layer"
+            self.pool = SumChannelsPool1d(window_length=window_length, eps=eps)
+
+    def calculate_var(self, x, mean, mask):
+        term = torch.square(x - mean)
+        if mask is not None:
+            term = term * mask
+        return self.pool.mean(term, mask)
+
+    def forward(self, x, mask):
+        # x shape: (N, C, L)
+        mean = self.pool.mean(x, mask)
+        var = self.calculate_var(x, mean, mask)
+        x_normalized = (x - mean) / torch.sqrt(var + self.eps)
+        return x_normalized
+
+
+class SumPool1d(torch.nn.Module):
+    def __init__(self, *, window_length, eps=1e-9):
+        super().__init__()
+        self.pool = nn.AvgPool2d(
+            kernel_size=(1, window_length),
+            stride=1,
+            padding=(0, window_length // 2),
+            divisor_override=1,
+        )
+        self.mean_pool = nn.AvgPool1d(
+            kernel_size=window_length,
+            stride=1,
+            padding=window_length // 2,
+            count_include_pad=False,
+        )
+        self.eps = eps
+
+    def mean(self, x, mask):
+        if mask is None:
+            return self.mean_pool(x)
+        else:
+            num = self.forward(x)
+            denom = self.forward(mask)
+            return num / (denom + self.eps) * mask
 
     def forward(self, x):
-        # x shape: (N, C, L)
-        # mean = calculate_mean(x, mask, kernel)
-        # var = calculate_var(x, mean, mask, kernel)
-        # x_normalized = (x - mean) / torch.sqrt(var + self.eps)
-        alpha = rearrange(self.alpha, "a -> 1 a 1")
-        x_normalized = torch.tanh(alpha * x)
-        return x_normalized
+        x = rearrange(x, "b c l -> b 1 c l")
+        x = self.pool(x)
+        x = rearrange(x, "b 1 c l -> b c l")
+        return x
+
+
+class SumChannelsPool1d(torch.nn.Module):
+    def __init__(self, *, window_length, eps=1e-9):
+        super().__init__()
+        self.pool = nn.AvgPool2d(
+            kernel_size=(1, window_length),
+            stride=1,
+            padding=(0, window_length // 2),
+            divisor_override=1,
+        )
+        self.mean_pool = nn.AvgPool1d(
+            kernel_size=window_length,
+            stride=1,
+            padding=window_length // 2,
+            count_include_pad=False,
+        )
+        self.eps = eps
+
+    def mean(self, x, mask):
+        if mask is None:
+            return self.mean_pool(x)
+        else:
+            num = self.forward(x)
+            denom = self.forward(mask)
+            return num / (denom + self.eps) * mask
+
+    def forward(self, x):
+        x = rearrange(x, "b c l -> b 1 c l")
+        x = self.pool(x)
+        x = x.sum(dim=2)
+        return x
