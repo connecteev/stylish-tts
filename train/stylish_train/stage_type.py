@@ -221,6 +221,12 @@ def train_textual(
         log = build_loss_log(train)
         train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
         log.add_loss(
+            "generator",
+            train.generator_loss(
+                batch.audio_gt.detach().unsqueeze(1).float(), pred.audio, ["mrd"]
+            ).mean(),
+        )
+        log.add_loss(
             "pitch",
             torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
         )
@@ -230,7 +236,7 @@ def train_textual(
         )
         train.accelerator.backward(log.backwards_loss())
 
-    return log.detach(), None
+    return log.detach(), pred.audio.detach()
 
 
 @torch.no_grad()
@@ -258,7 +264,7 @@ stages["textual"] = StageType(
     validate_fn=validate_textual,
     train_models=["pitch_energy_predictor"],
     eval_models=["speech_predictor"],
-    discriminators=[],
+    discriminators=["mrd"],
     inputs=[
         "text",
         "text_length",
