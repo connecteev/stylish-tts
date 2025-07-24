@@ -80,6 +80,7 @@ stages = {
             "text",
             "text_length",
             "alignment",
+            "audio_gt",
         ],
     ),
     "acoustic": StageConfig(

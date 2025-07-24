@@ -11,6 +11,7 @@ import torch
 import torchaudio
 import torch.utils.data
 from safetensors import safe_open
+from .utils import duration_to_alignment
 
 import logging
 
@@ -325,14 +326,9 @@ class Collater(object):
                     elif pick < duration[1][i] + duration[2][i]:
                         pred_dur[i] -= 1
                         pred_dur[i + 1] += 1
-            indices = torch.repeat_interleave(
-                torch.arange(text_size, device="cpu"), pred_dur.to(torch.int)
-            )
-            indices = indices.to("cpu")
-            pred_aln_trg = torch.zeros((text_size, indices.shape[0]), device="cpu")
-            pred_aln_trg[indices, torch.arange(indices.shape[0])] = 1
+            alignment = duration_to_alignment(pred_dur)
             if pred_aln_trg.shape[1] == mel_size:
-                alignments[bid, :text_size, :mel_size] = pred_aln_trg
+                alignments[bid, :text_size, :mel_size] = alignment
 
         result = (
             waves,

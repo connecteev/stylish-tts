@@ -44,6 +44,30 @@ def validate_duration(batch, train):
     # state = BatchContext(train=train, model=train.model)
     # duration = state.predict_duration(batch)
     duration = train.model.duration_predictor(batch.text, batch.text_length)
+    pred_pitch, pred_energy = train.model.pitch_energy_predictor(
+        batch.text, batch.text_length, batch.alignment
+    )
+    results = []
+    max_length = 0
+    for i in range(duration.shape[0]):
+        alignment = duration_to_alignment(duration[i])
+        alignment = rearrange(alignment, "t a -> 1 t a")
+        pred = train.model.speech_predictor(
+            batch.text[i : i + 1],
+            batch.text_length[i : i + 1],
+            alignment,
+            pred_pitch[i : i + 1],
+            pred_energy[i : i + 1],
+        )
+        if pred.audio.shape[1] > max_length:
+            max_length = pred.audio.shape[1]
+        results.append(pred.audio)
+    for i in range(len(results)):
+        results[i] = rearrange(results[i], "1 l -> l")
+        results[i] = torch.nn.functional.pad(
+            results[i], (0, max_length - results[i].shape[0])
+        )
+    results = torch.stack(results)
     log = build_loss_log(train)
     loss_ce, loss_dur = compute_duration_ce_loss(
         duration,
@@ -53,7 +77,7 @@ def validate_duration(batch, train):
     log.add_loss("duration_ce", loss_ce)
     log.add_loss("duration", loss_dur)
 
-    return log.detach(), None, None, None
+    return log.detach(), None, results, batch.audio_gt
 
 
 @torch.no_grad()

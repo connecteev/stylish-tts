@@ -266,6 +266,19 @@ def save_git_diff(out_dir):
     print(f"Git diff saved to {diff_file}")
 
 
+def duration_to_alignment(duration: torch.Tensor) -> torch.Tensor:
+    """Convert a sequence of duration values to an attention matrix.
+
+    duration -- [t]ext length
+    result -- [t]ext length x [a]udio length"""
+    indices = torch.repeat_interleave(
+        torch.arange(duration.shape[0], device=duration.device), duration.to(torch.int)
+    )
+    result = torch.zeros((duration.shape[0], indices.shape[0]), device=duration.device)
+    result[indices, torch.arange(indices.shape[0])] = 1
+    return result
+
+
 def clamped_exp(x: torch.Tensor) -> torch.Tensor:
     x = x.clamp(-35, 35)
     return torch.exp(x)
