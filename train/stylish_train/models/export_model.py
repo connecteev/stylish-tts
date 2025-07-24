@@ -1,4 +1,5 @@
 import torch
+from utils import duration_to_alignment
 
 
 class ExportModel(torch.nn.Module):
@@ -30,18 +31,11 @@ class ExportModel(torch.nn.Module):
     def duration_predict(self, texts, text_lengths):
         duration = self.duration_predictor(texts, text_lengths)
         duration = torch.sigmoid(duration).sum(axis=-1)
+        duration = torch.round(duration).clamp(min=1).long().squeeze()
 
-        pred_dur = torch.round(duration).clamp(min=1).long().squeeze()
-        indices = torch.repeat_interleave(
-            torch.arange(texts.shape[1], device=self.device), pred_dur
-        )
-        pred_aln_trg = torch.zeros(
-            (texts.shape[1], indices.shape[0]), device=self.device
-        )
-        pred_aln_trg[indices, torch.arange(indices.shape[0])] = 1
-        pred_aln_trg = pred_aln_trg.unsqueeze(0).to(self.device)
-
-        return pred_aln_trg
+        result = duration_to_alignment(duration)
+        result = result.unsqueeze(0)
+        return result
 
     def forward(self, texts, text_lengths):
         alignment = self.duration_predict(texts, text_lengths)
