@@ -4,7 +4,6 @@ import torchaudio
 from torch.nn import functional as F
 from einops import rearrange
 
-from batch_context import BatchContext
 from loss_log import build_loss_log
 from losses import compute_duration_ce_loss
 from utils import length_to_mask, log_norm

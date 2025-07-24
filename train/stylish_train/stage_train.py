@@ -1,13 +1,11 @@
-import math
 import random
 from typing import Optional, Tuple
 import torch
 from torch.nn import functional as F
 from einops import rearrange
-from batch_context import BatchContext
 from loss_log import LossLog, build_loss_log
 from losses import compute_duration_ce_loss
-from utils import length_to_mask, print_gpu_vram, log_norm
+from utils import print_gpu_vram, log_norm
 
 
 def train_alignment(
@@ -25,7 +23,7 @@ def train_alignment(
         "align_loss",
         loss_ctc,
     )
-    train.accelerator.backward(log.backwards_loss() * math.sqrt(batch.text.shape[0]))
+    train.accelerator.backward(log.backwards_loss())
     return log.detach(), None
 
 
@@ -96,9 +94,7 @@ def train_acoustic(
             "energy",
             torch.nn.functional.smooth_l1_loss(energy, pred_energy),
         )
-        train.accelerator.backward(
-            log.backwards_loss() * math.sqrt(batch.text.shape[0])
-        )
+        train.accelerator.backward(log.backwards_loss())
         print_gpu_vram("backward")
 
     return log.detach(), pred.audio.detach()
@@ -153,8 +149,6 @@ def train_textual(
         # )
         # log.add_loss("duration_ce", loss_ce)
         # log.add_loss("duration", loss_dur)
-        train.accelerator.backward(
-            log.backwards_loss() * math.sqrt(batch.text.shape[0])
-        )
+        train.accelerator.backward(log.backwards_loss())
 
     return log.detach(), None
