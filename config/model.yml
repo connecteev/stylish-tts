@@ -46,7 +46,7 @@ duration_predictor:
   dropout: 0.2
 
 pitch_energy_predictor:
-  dropout: 0.5
+  dropout: 0.2
 
 # speech language model config
 slm:
