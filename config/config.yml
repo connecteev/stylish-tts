@@ -72,7 +72,9 @@ loss_weight:
   # style reconstruction loss
   style: 1
   # magnitude/phase loss
-  magphase: 1
+  mag: 1
+  phase_x: 1
+  phase_y: 1
   # confidence for alignment (placeholder)
   confidence: 1
   # alignment loss

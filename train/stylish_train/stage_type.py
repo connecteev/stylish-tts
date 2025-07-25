@@ -7,6 +7,7 @@ from einops import rearrange
 from loss_log import LossLog, build_loss_log
 from losses import compute_duration_ce_loss
 from utils import print_gpu_vram, log_norm, duration_to_alignment
+from typing import List
 
 
 stages = {}
@@ -38,6 +39,13 @@ class StageType:
         self.eval_models: List[str] = eval_models
         self.discriminators = discriminators
         self.inputs: List[str] = inputs
+
+
+def make_list(tensor: torch.Tensor) -> List[torch.Tensor]:
+    result = []
+    for i in range(tensor.shape[0]):
+        result.append(tensor[i])
+    return result
 
 
 ##### Alignment #####
@@ -177,7 +185,7 @@ def validate_acoustic(batch, train):
         "energy",
         torch.nn.functional.smooth_l1_loss(energy, pred_energy),
     )
-    return log, batch.alignment[0], pred.audio, batch.audio_gt
+    return log, batch.alignment[0], make_list(pred.audio), batch.audio_gt
 
 
 stages["acoustic"] = StageType(
@@ -251,7 +259,7 @@ def validate_textual(batch, train):
         torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
     )
     log.add_loss("energy", torch.nn.functional.smooth_l1_loss(energy, pred_energy))
-    return log, batch.alignment[0], pred.audio, batch.audio_gt
+    return log, batch.alignment[0], make_list(pred.audio), batch.audio_gt
 
 
 stages["textual"] = StageType(
@@ -297,31 +305,31 @@ def train_duration(
 def validate_duration(batch, train):
     duration = train.model.duration_predictor(batch.text, batch.text_length)
     results = []
-    max_length = 0
     for i in range(duration.shape[0]):
         dur = torch.sigmoid(duration[i]).sum(axis=-1)
         dur = torch.round(dur).clamp(min=1).long()
+        dur = dur[: batch.text_length[i]]
         alignment = duration_to_alignment(dur)
         alignment = rearrange(alignment, "t a -> 1 t a")
         pred_pitch, pred_energy = train.model.pitch_energy_predictor(
-            batch.text[i : i + 1], batch.text_length[i : i + 1], alignment
+            batch.text[i : i + 1, : batch.text_length[i]],
+            batch.text_length[i : i + 1],
+            alignment,
         )
+        kernel = torch.FloatTensor(
+            [[[0.006, 0.061, 0.242, 0.383, 0.242, 0.061, 0.006]]]
+        ).to(batch.text.device)
+        pred_pitch = torch.nn.functional.conv1d(pred_pitch, kernel, padding=3)
+        pred_energy = torch.nn.functional.conv1d(pred_energy, kernel, padding=3)
         pred = train.model.speech_predictor(
-            batch.text[i : i + 1],
+            batch.text[i : i + 1, : batch.text_length[i]],
             batch.text_length[i : i + 1],
             alignment,
             pred_pitch,
             pred_energy,
         )
         audio = rearrange(pred.audio, "1 1 l -> l")
-        if audio.shape[0] > max_length:
-            max_length = audio.shape[0]
         results.append(audio)
-    for i in range(len(results)):
-        results[i] = torch.nn.functional.pad(
-            results[i], (0, max_length - results[i].shape[0])
-        )
-    results = torch.stack(results)
     log = build_loss_log(train)
     loss_ce, loss_dur = compute_duration_ce_loss(
         duration,
