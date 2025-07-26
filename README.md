@@ -78,7 +78,7 @@ Once the alignment stage completes, it will provide a trained model at `/path/to
 
 ```
 cd stylish-tts/train
-PYTHONPATH=. uv run stylish_train/dataprep/align_text.py \
+PYTHONPATH=. uv run stylish_train/align_text.py \
     --model_config_path ../config/model.yml \
     --config_path /path/to/your/config.yml \
     --model /path/to/your/alignment_model.safetensors \    
