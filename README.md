@@ -1,6 +1,6 @@
 # Stylish TTS
 
-Stylish TTS is a lightweight text-to-speech system suitable for offline local use. Our goal is providing consistency for long form text and screen reading with a focus on high quality single speaker models rather than zero-shot voice cloning. The architecture is based on [StyleTTS 2](https://github.com/yl4579/StyleTTS2) with many bugfixes, model improvements, and a streamlined training process.
+Stylish TTS is a lightweight text-to-speech system suitable for offline local use. Our goal is providing consistency for long form text and screen reading with a focus on high quality single speaker models rather than zero-shot voice cloning. The architecture was based on [StyleTTS 2](https://github.com/yl4579/StyleTTS2), but has now diverged substantially.
 
 TODO: Make some samples
 
@@ -23,11 +23,11 @@ In order to train your model, you need a GPU with at least 16 GB of VRAM and PyT
 
 ## Preparing a dataset
 
-A dataset consists of many segments. Each segment has a written text and an audio file where that text is spoken by a reader. When using the default model options, the audio must be at least 0.25 seconds long. The upper limit on audio length for a segment will be based on the VRAM of your GPU. You typically want to have audio clips distributed over the whole range of possible lengths. If your range doesn't cover the shortest lengths, your model will sound worse when doing short utterances of one word or a few words. If your range doesn't cover longer lengths which include multiple sentences, your model will tend to skip past punctuation too quickly.
+A dataset consists of many segments. Each segment has a written text and an audio file where that text is spoken by a reader. 
 
 ### Segment Distribution
 
-Segments must have 510 phonemes or less. Audio segments must be at least 0.25 seconds long. The upper limit on audio length is determined by your VRAM and the training stage. Generally speaking, you will want to have a distribution of segments between 0.25 seconds and 10 seconds long. If you have a the VRAM, you can include even longer segments, though there are diminishing returns.
+Segments must have 510 phonemes or less. Audio segments must be at least 0.25 seconds long. The upper limit on audio length is determined by your VRAM and the training stage. Generally speaking, you will want to have a distribution of segments between 0.25 seconds and 10 seconds long. If your range doesn't cover the shortest lengths, your model will sound worse when doing short utterances of one word or a few words. If your range doesn't cover longer lengths which include multiple sentences, your model will tend to skip past punctuation too quickly. If you have a the VRAM, you can include even longer segments, though there are diminishing returns.
 
 ### Training List / Validation List
 
@@ -55,7 +55,15 @@ calculate-pitch.py is a single-process version while all-pitch.py calculates the
 
 Alignment data is also pre-cached and you will need to train an alignment model first to generate the pre-cached data. This is a multi-step process but only needs to be done once for your dataset after which you can just use the cached results similar to pitch data.
 
-First, you run train.py using the special alignment stage. For a description of the other parameters, see below. During training you will see both a confidence and a loss value during each validation. Generally confidence should go up and loss should go down. A special term is updated once per epoch to improve training and you will likely see a sudden change in loss between epochs. This is normal.
+First, you run train.py using the special alignment stage. For a description of the other parameters, see below.
+
+#### Expectations during alignment pre-training
+
+In this stage, a special adjustment is made to training parameters at the end of each epoch. The adjustment means there will be a discontinuity in the training curve between epochs. This adjustment will eventually make the loss turn NEGATIVE. This is normal. If your training align_loss does not eventually go negative, you likely need to train more.
+
+At each validation step, both an un-adjusted align_loss and a confidence score are generated. align_loss should be going down. Confidence should be going up. You want to pick a number of epochs so that these scores reach the knee in their curve. Do not keep training forever just because they are slowly going down. If you run into issues where things are not converging later, it is likely that you need to come back to this step and train a different amount to hit that knee in the curve of loss.
+
+During alignment pre-training, we ALSO train on the validation set. This is usually a very very bad thing in ML. But in this case, the alignment model will never be used for aligning out-of-distribution segments. Doing this gives us a more representative sample for acoustic and textual training and does not have any other effects on overall training.
 
 ```
 cd stylish-tts/train
@@ -100,13 +108,39 @@ model_config_path: You should usually leave the model_config_path pointing at th
 
 config_path: You should make your own copy of the config.yaml in the repository and fill in the paths to your dataset.
 
-stage: It is best to start with alignment pre-training. It is very fast and makes all other stages train better. Later if you are loading a checkpoint, you may want to pick another stage to resume from.
+stage: Aside from alignment discussed above, the main three stages of training are 'acoustic', 'textual', and 'duration'. You always start in 'acoustic' and as each stage ends, the next will automatically begin. You only need to specify the other two if you are resuming from a checkpoint.
 
 out_dir: This is the destination path for all checkpoints, training logs, and tensorboard data. A separate sub-directory is created for each stage of training. Make sure to have plenty of disk space available here as checkpoints can take a large amount of storage.
 
+## Expectations during training
+
 It will take a long time to run this script. So it is a good idea to run using screen or tmux to have a persistent shell that won't disappear if you get disconnected or close the window.
 
-Stages advance automatically and a checkpoint is created at the end of every stage before moving to the next. Other checkpoints will be saved and validations will be periodically run based on your config.yml settings.
+Stages advance automatically and a checkpoint is created at the end of every stage before moving to the next. Other checkpoints will be saved and validations will be periodically run based on your config.yml settings. Every stage will have its own sub-directory of `out_dir` and its own training log and tensorboard graphs/samples.
+
+### Acoustic training
+
+Acoustic training is about training the fundamental acoustic speech prediction models which feed into the vocoder. We 'cheat' by feeding these models parameters derived directly from the audio segments. The pitch, energy, and alignments all come from our target audio. Pitch and energy are still being trained here, but they are not being used to generate predicted audio.
+
+The main loss figure to look at is `mel` which is a perceptual similarity of the generated audio to the ground truth. It should slowly decrease during training, but the exact point at which it converges will depend on your dataset. The other loss figures can generally be ignored and may not vary much during training.
+
+By the end of acoustic training, the samples should sound almost identical to ground-truth. These are probably going to be the best-sounding samples you listen to. But of course this is because it is doing the easiest version of the task.
+
+### Textual training
+
+In textual training, the acoustic speech prediction is frozen while the focus of training becomes pitch and energy. Here the only 'cheating' we do is to use the ground-truth alignment. The predicted pitch and energy are used to directly predict the audio.
+
+Here, `mel`, `pitch`, and `energy` losses are all important. You should expect mel loss to always be much higher in this stage than the acoustic stage. And it will only very gradually go down. Since there are three losses here, keeping an eye on total loss is more useful. It will be a lot less stable than in acoustic, but there is still a clear trend downwards.
+
+As training goes on, the voice should sound less strained, less 'warbly', and more natural. Make sure you are listening for the tone of the sound and how loud it is rather than strict prosody because the samples are still using the ground truth alignment.
+
+### Duration training
+
+The final stage of training removes our last 'cheat' and trains the duration predictor to try to replicate the prosody of the original. The other models are frozen. All samples use only values predicted from the text.
+
+The `duration` loss is obviously the one to look for here. While `duration_ce` should also be slowly going down. The main danger here is overfitting. So if you see validation loss stagnate or start going up you should stop training even if training loss is still going down.
+
+When you listen to samples, you will get the same version you'd expect to hear during inference. Listen to make sure the voice as a whole is not going to fast or slow or just going past punctuation without pausing. You should no longer expect it to mirror the ground truth exactly, but it should have generalized to the point where it is a plausible and expressive reading. As training proceeds, it should sound more and more like fluent prosody. If there are still pitch or energy issues like warbles or loudness or tone, then those won't be fixed in this stage and you may need to train more in Textual or Acoustic before trying Duration training.
 
 ## Loading a checkpoint
 
@@ -120,7 +154,7 @@ uv run stylish_train/train.py \
     --checkpoint /path/to/your/checkpoint
 ```
 
-You can load a checkpoint from any stage via the --checkpoint argument. You still need to set --stage appropriately to one of "alignment|pre_acoustic|acoustic|pre_textual|textual|joint". If you set it to the same stage as the checkpoint loaded from, it will continue in that stage at the same step number and epoch. If it is a different stage, it will train the entire stage.
+You can load a checkpoint from any stage via the --checkpoint argument. You still need to set --stage appropriately to one of "alignment|acoustic|acoustic|textual|textual|duration". If you set it to the same stage as the checkpoint loaded from, it will continue in that stage at the same step number and epoch. If it is a different stage, it will train the entire stage.
 
 Note that Stylish TTS checkpoints are not compatible with StyleTTS 2 checkpoints.
 
