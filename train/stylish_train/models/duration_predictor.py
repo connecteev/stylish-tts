@@ -4,7 +4,11 @@ import torch.nn.functional as F
 from einops import rearrange
 from .common import LinearNorm
 from .text_encoder import FFN, MultiHeadAttention, sequence_mask
-
+from .common import InstanceNorm1d
+from .conv_next import ConvNeXtBlock
+from .text_encoder import TextEncoder
+from .fine_style_encoder import FineStyleEncoder
+from .prosody_encoder import ProsodyEncoder
 
 # class DurationPredictor(nn.Module):
 #     def __init__(self, style_dim, in_channels, filter_channels, kernel_size, dropout):
@@ -43,18 +47,50 @@ from .text_encoder import FFN, MultiHeadAttention, sequence_mask
 
 class DurationPredictor(nn.Module):
     def __init__(
-        self, style_dim, d_hid, nlayers, max_dur=50, dropout=0.1, has_duration_proj=True
+        self, style_dim, inter_dim, text_config, style_config, duration_config
     ):
         super().__init__()
-        self.text_encoder = DurationEncoder(
-            sty_dim=style_dim, d_model=d_hid, nlayers=nlayers, dropout=dropout
+        self.text_encoder = TextEncoder(inter_dim=inter_dim, config=text_config)
+        self.style_encoder = FineStyleEncoder(
+            inter_dim,
+            style_dim,
+            config=style_config,
+            # model_config.style_encoder.layers,
         )
-        self.duration_proj = LinearNorm(d_hid + style_dim, max_dur)
+        self.prosody_encoder = ProsodyEncoder(
+            sty_dim=style_dim,
+            d_model=inter_dim,
+            nlayers=duration_config.n_layer,
+            dropout=duration_config.dropout,
+        )
+        self.duration_proj = LinearNorm(inter_dim + style_dim, duration_config.max_dur)
+        # self.blocks = nn.ModuleList()
+        # for _ in range(nlayers):
+        #     # self.blocks.append(AdaWinBlock1d(dim_in=d_hid, dim_out=d_hid, style_dim=style_dim, window_length=37, dropout_p=dropout))
+        #     self.blocks.append(
+        #         ConvNeXtBlock(
+        #             dim_in=d_hid,
+        #             dim_out=d_hid,
+        #             intermediate_dim=d_hid * 4,
+        #             style_dim=style_dim,
+        #             dilation=[1, 3, 5],
+        #             dropout=dropout,
+        #             window_length=37,
+        #         )
+        #     )
+        # self.duration_proj = LinearNorm(d_hid, 1)  # max_dur)
 
-    def forward(self, texts, style, text_lengths):
-        d = self.text_encoder(texts, style, text_lengths)
-        duration = self.duration_proj(d)
-        return duration.squeeze(-1)
+    def forward(self, texts, text_lengths):
+        encoding, _, _ = self.text_encoder(texts, text_lengths)
+        style = self.style_encoder(encoding, text_lengths)
+        prosody = self.prosody_encoder(encoding, style, text_lengths)
+        duration = self.duration_proj(prosody)
+        # x = texts
+        # for block in self.blocks:
+        #     x = block(x, style, text_lengths)
+        # x = x.transpose(-2, -1)
+        # duration = self.duration_proj(x)
+        return duration  # .squeeze(-1)
 
 
 # class DurationEncoder(nn.Module):
@@ -135,91 +171,3 @@ class DurationPredictor(nn.Module):
 #                 x = rearrange(x, "t c -> 1 c t")
 
 #         return rearrange(x, "b c t -> b t c")
-
-
-class DurationEncoder(nn.Module):
-    def __init__(
-        self,
-        sty_dim,
-        d_model,
-        nlayers,
-        dropout=0.1,
-        n_heads=2,
-        kernel_size=1,
-        **kwargs,
-    ):
-        super().__init__()
-        hidden_channels = d_model + sty_dim
-        self.n_heads = n_heads
-        self.n_layers = nlayers
-        self.kernel_size = kernel_size
-
-        self.drop = torch.nn.Dropout(dropout)
-        self.attn_layers = torch.nn.ModuleList()
-        self.norm_layers_1 = torch.nn.ModuleList()
-        self.ffn_layers = torch.nn.ModuleList()
-        self.norm_layers_2 = torch.nn.ModuleList()
-        self.proj_layers = torch.nn.ModuleList()
-
-        for _ in range(self.n_layers):
-            self.attn_layers.append(
-                MultiHeadAttention(
-                    hidden_channels, hidden_channels, n_heads, p_dropout=dropout
-                )
-            )
-            self.norm_layers_1.append(AdaLayerNorm(sty_dim, hidden_channels))
-            self.ffn_layers.append(
-                FFN(
-                    hidden_channels,
-                    hidden_channels,
-                    hidden_channels * 2,
-                    kernel_size,
-                    p_dropout=dropout,
-                )
-            )
-            self.norm_layers_2.append(AdaLayerNorm(sty_dim, hidden_channels))
-            self.proj_layers.append(nn.Conv1d(hidden_channels, d_model, 1))
-
-    def forward(self, x, style, x_lengths):
-        x_mask = torch.unsqueeze(sequence_mask(x_lengths, x.size(2)), 1).to(x.dtype)
-        attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
-        x = torch.cat([x, style], dim=1)
-        for i in range(self.n_layers):
-            x = x * x_mask
-            y = self.attn_layers[i](x, x, attn_mask)
-            y = self.drop(y)
-            x = self.norm_layers_1[i](torch.transpose(x + y, -1, -2), style).transpose(
-                -1, -2
-            )
-
-            y = self.ffn_layers[i](x, x_mask)
-            y = self.drop(y)
-            x = self.norm_layers_2[i](torch.transpose(x + y, -1, -2), style).transpose(
-                -1, -2
-            )
-            x = self.proj_layers[i](x)
-            x = torch.cat([x, style], dim=1)
-        x = x * x_mask
-        return x.transpose(-1, -2)
-
-
-class AdaLayerNorm(nn.Module):
-    def __init__(self, style_dim, channels, eps=1e-5):
-        super().__init__()
-        self.channels = channels
-        self.eps = eps
-
-        self.fc = nn.Linear(style_dim, channels * 2)
-
-    def forward(self, x, s):
-        x = x.transpose(-1, -2)
-        x = x.transpose(1, -1)
-
-        s = rearrange(s, "b s t -> b t s")
-        h = self.fc(s)
-        gamma = h[:, :, : self.channels]
-        beta = h[:, :, self.channels :]
-
-        x = F.layer_norm(x, (self.channels,), eps=self.eps)
-        x = (1 + gamma) * x + beta
-        return x

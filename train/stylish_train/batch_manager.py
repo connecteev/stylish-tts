@@ -72,6 +72,8 @@ class BatchManager:
                 "--probe_batch must be run with accelerator num_processes set to 1. After running it, distribute the batch_sizes.json files to the log directories and run in DDP"
             )
 
+        # Use up 200 MB of VRAM during probing to make our batch size estimates conservative
+        lodestone = torch.zeros([50, 1000, 1000], dtype=torch.float, device=self.device)
         train.stage.reset_batch_sizes()
         batch_size = self.probe_batch_max
         time_keys = sorted(list(self.time_bins.keys()))
@@ -102,7 +104,7 @@ class BatchManager:
                         loader = build_dataloader(
                             self.dataset,
                             self.time_bins,
-                            num_workers=1,
+                            num_workers=0,
                             device=self.device,
                             drop_last=True,
                             multispeaker=self.multispeaker,
@@ -144,8 +146,8 @@ class BatchManager:
             else:
                 total_used_time += self.time_per_bin.get(int(key), 0.0)
         train.logger.info(
-                            f"Training on {total_used_time/3600:.2f}h of audio, skipping {total_skipped_time/3600:.2f}h of audio due to OOM"
-                        )
+            f"Training on {total_used_time/3600:.2f}h of audio, skipping {total_skipped_time/3600:.2f}h of audio due to OOM"
+        )
         train.stage.save_batch_sizes()
         iterator.close()
 

@@ -1,4 +1,5 @@
 # coding: utf-8
+import random
 import os.path as osp
 import numpy as np
 import soundfile as sf
@@ -10,6 +11,7 @@ import torch
 import torchaudio
 import torch.utils.data
 from safetensors import safe_open
+from utils import duration_to_alignment
 
 import logging
 
@@ -172,8 +174,9 @@ class FilePathDataset(torch.utils.data.Dataset):
             alignment = self.alignment[path]
             alignment = alignment.detach()
         else:
+            # TODO need to warn here or check for alignment stage and skip
             alignment = torch.zeros(
-                (text_tensor.shape[0], align_mel.shape[1] // 2),
+                (3, text_tensor.shape[0]),
                 dtype=torch.float32,  # Match Collater's target dtype
             )
 
@@ -276,7 +279,8 @@ class Collater(object):
         waves = torch.zeros((batch_size, batch[0][7].shape[-1])).float()
         pitches = torch.zeros((batch_size, max_mel_length)).float()
         align_mels = torch.zeros((batch_size, 80, max_mel_length)).float()
-        alignments = torch.zeros((batch_size, max_text_length, max_mel_length // 2))
+        alignments = torch.zeros((batch_size, max_text_length, max_mel_length))
+        # alignments = torch.zeros((batch_size, max_text_length, max_mel_length // 2))
 
         for bid, (
             label,
@@ -289,7 +293,7 @@ class Collater(object):
             wave,
             pitch,
             align_mel,
-            alignment,
+            duration,
         ) in enumerate(batch):
             mel_size = mel.size(1)
             text_size = text.size(0)
@@ -310,7 +314,21 @@ class Collater(object):
             if pitch is not None:
                 pitches[bid] = pitch
             align_mels[bid, :, :mel_size] = align_mel
-            alignments[bid, :text_size, : mel_size // 2] = alignment
+
+            # alignments[bid, :text_size, : mel_size // 2] = duration
+            pred_dur = duration[0]
+            for i in range(pred_dur.shape[0] - 1):
+                if pred_dur[i] > 1 and pred_dur[i + 1] > 1:
+                    pick = random.random()
+                    if pick < duration[1][i]:
+                        pred_dur[i] += 1
+                        pred_dur[i + 1] -= 1
+                    elif pick < duration[1][i] + duration[2][i]:
+                        pred_dur[i] -= 1
+                        pred_dur[i + 1] += 1
+            alignment = duration_to_alignment(pred_dur)
+            if alignment.shape[1] == mel_size:
+                alignments[bid, :text_size, :mel_size] = alignment
 
         result = (
             waves,

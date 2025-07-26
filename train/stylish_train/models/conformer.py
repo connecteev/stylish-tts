@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from einops.layers.torch import Rearrange
 from einops import rearrange
 from torch import nn, einsum
+from .text_encoder import sequence_mask
 
 import logging
 
@@ -75,11 +76,7 @@ class PreNorm(nn.Module):
 
     def forward(self, x, **kwargs):
         x = self.norm(x.to(x.device))
-        try:
-            result = self.fn(x.to(x.device), **kwargs)
-        except Exception as e:
-            logger.error(e)
-            exit(str(e))
+        result = self.fn(x.to(x.device), **kwargs)
         return result
 
 
@@ -119,31 +116,30 @@ class Attention(nn.Module):
         q, k, v = map(lambda t: rearrange(t, "b n (h d) -> b h n d", h=h), (q, k, v))
 
         if self.use_sdpa:
-            q_ = rearrange(q, "b h n d -> b n h d")
-            k_ = rearrange(k, "b h n d -> b n h d")
-            v_ = rearrange(v, "b h n d -> b n h d")
-
             if mask is not None or context_mask is not None:
                 attn_mask = self._get_combined_mask(mask, context_mask, x, context)
+                # F.sdpa expects a "keep" mask
                 attn_mask = attn_mask.to(torch.bool)
             else:
                 attn_mask = None
 
             out = F.scaled_dot_product_attention(
-                q_, k_, v_, attn_mask=attn_mask, dropout_p=0.0
+                q, k, v, attn_mask=attn_mask, dropout_p=0.0, scale=self.scale
             )
-            out = rearrange(out, "b n h d -> b n (h d)")
+            out = rearrange(out, "b h n d -> b n (h d)")
         else:
             dots = einsum("b h i d, b h j d -> b h i j", q, k) * self.scale
-
             if mask is not None or context_mask is not None:
                 attn_mask = self._get_combined_mask(mask, context_mask, x, context)
+                # masked_fill_ expects a "mask out" mask.
+                fill_mask = ~attn_mask.to(torch.bool)
                 mask_value = -torch.finfo(dots.dtype).max
-                dots.masked_fill_(~attn_mask, mask_value)
+                dots.masked_fill_(fill_mask, mask_value)
 
             attn = dots.softmax(dim=-1)
             out = einsum("b h i j, b h j d -> b h i d", attn, v)
             out = rearrange(out, "b h n d -> b n (h d)")
+
         return self.dropout(self.to_out(out))
 
     def _get_combined_mask(self, mask, context_mask, x, context):
@@ -205,11 +201,16 @@ class ConformerBlock(nn.Module):
         ff_dropout=0.0,
         conv_dropout=0.0,
         conv_causal=False,
+        use_sdpa=True,
     ):
         super().__init__()
         self.ff1 = FeedForward(dim=dim, mult=ff_mult, dropout=ff_dropout)
         self.attn = Attention(
-            dim=dim, dim_head=dim_head, heads=heads, dropout=attn_dropout
+            dim=dim,
+            dim_head=dim_head,
+            heads=heads,
+            dropout=attn_dropout,
+            use_sdpa=use_sdpa,
         )
         self.self_attn_dropout = torch.nn.Dropout(attn_dropout)
         self.conv = ConformerConvModule(
@@ -256,6 +257,7 @@ class Conformer(nn.Module):
         ff_dropout=0.0,
         conv_dropout=0.0,
         conv_causal=False,
+        use_sdpa=True,
     ):
         super().__init__()
         self.dim = dim
@@ -271,12 +273,17 @@ class Conformer(nn.Module):
                     conv_expansion_factor=conv_expansion_factor,
                     conv_kernel_size=conv_kernel_size,
                     conv_causal=conv_causal,
+                    use_sdpa=use_sdpa,
                 )
             )
 
-    def forward(self, x):
-
+    def forward(self, x, lengths=None):
+        # if lengths is None:
+        #     lengths = torch.full((x.shape[0],), x.shape[1], dtype=x.dtype)
+        mask = None
+        if lengths is not None:
+            mask = sequence_mask(lengths, max_length=x.shape[1]).to(x.device)
         for block in self.layers:
-            x = block(x)
+            x = block(x, mask)
 
         return x

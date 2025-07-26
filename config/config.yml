@@ -15,19 +15,23 @@ training:
 training_plan:
   alignment:
     # alignment pretraining
-    epochs: 10
+    epochs: 20
     # Maximum number of segments per batch.
     probe_batch_max: 128
     # Learing Rate for this stage
     lr: 1e-5
   acoustic:
     # training of acoustic models and vocoder
-    epochs: 5
+    epochs: 10
     probe_batch_max: 16
+    lr: 1e-4
+  duration:
+    epochs: 20
+    probe_batch_max: 32
     lr: 1e-4
   textual:
     # training for duration/pitch/energy from text
-    epochs: 5
+    epochs: 20
     probe_batch_max: 32
     lr: 1e-4
 
@@ -68,7 +72,9 @@ loss_weight:
   # style reconstruction loss
   style: 1
   # magnitude/phase loss
-  magphase: 1
+  mag: 1
+  phase_x: 1
+  phase_y: 1
   # confidence for alignment (placeholder)
   confidence: 1
   # alignment loss

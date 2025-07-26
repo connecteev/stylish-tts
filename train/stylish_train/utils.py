@@ -71,7 +71,8 @@ def log_norm(x, mean=-4, std=4, dim=2):
     """
     normalized log mel -> mel -> norm -> log(norm)
     """
-    x = torch.log(torch.exp(x * std + mean).norm(dim=dim))
+    # x = torch.log(torch.exp(x * std + mean).norm(dim=dim))
+    x = (torch.exp(x * std + mean) ** 0.33).sum(dim=dim)
     return x
 
 
@@ -265,6 +266,19 @@ def save_git_diff(out_dir):
     print(f"Git diff saved to {diff_file}")
 
 
+def duration_to_alignment(duration: torch.Tensor) -> torch.Tensor:
+    """Convert a sequence of duration values to an attention matrix.
+
+    duration -- [t]ext length
+    result -- [t]ext length x [a]udio length"""
+    indices = torch.repeat_interleave(
+        torch.arange(duration.shape[0], device=duration.device), duration.to(torch.int)
+    )
+    result = torch.zeros((duration.shape[0], indices.shape[0]), device=duration.device)
+    result[indices, torch.arange(indices.shape[0])] = 1
+    return result
+
+
 def clamped_exp(x: torch.Tensor) -> torch.Tensor:
     x = x.clamp(-35, 35)
     return torch.exp(x)
@@ -285,15 +299,11 @@ class DecoderPrediction:
     def __init__(
         self,
         audio=None,
-        log_amplitude=None,
-        phase=None,
-        real=None,
-        imaginary=None,
+        x=None,
+        y=None,
         magnitude=None,
     ):
         self.audio = audio
-        self.log_amplitude = log_amplitude
-        self.phase = phase
-        self.real = real
-        self.imaginary = imaginary
+        self.x = x
+        self.y = y
         self.magnitude = magnitude

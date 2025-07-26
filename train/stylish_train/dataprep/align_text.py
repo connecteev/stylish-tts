@@ -6,11 +6,11 @@ import pathlib
 import sys
 
 from einops import rearrange
-from monotonic_align import mask_from_lens
 import numpy
 from safetensors.torch import load_file, save_file
 import soundfile
 import torch
+from torch.nn import functional as F
 import torchaudio
 import tqdm
 
@@ -139,11 +139,16 @@ def calculate_alignments(path, wavdir, aligner, model_config, text_cleaner):
 
 
 def torch_align(mels, text, mel_length, text_length, prediction, model_config):
+    # prediction = rearrange(prediction, "b t k -> b k t")
+    # prediction = F.interpolate(prediction, scale_factor=2, mode="linear")
+    # prediction = rearrange(prediction, "b k t -> b t k")
+    # prediction = prediction.contiguous()
+    # mel_length *= 2
     blank = model_config.text_encoder.tokens
     alignment, scores = torchaudio.functional.forced_align(
         log_probs=prediction,
         targets=text,
-        input_lengths=mel_length // 2,
+        input_lengths=mel_length,
         target_lengths=text_length,
         blank=blank,
     )
@@ -164,7 +169,27 @@ def torch_align(mels, text, mel_length, text_length, prediction, model_config):
                 was_blank = False
         assert alignment[i] == blank or alignment[i] == text[0, text_index]
         atensor[0, text_index, i] = 1
-    return atensor, scores
+    pred_dur = atensor.sum(dim=2).squeeze(0)
+    left = torch.zeros_like(pred_dur, dtype=torch.float)
+    right = torch.zeros_like(pred_dur, dtype=torch.float)
+    index = 0
+    for i in range(pred_dur.shape[0] - 1):
+        index += pred_dur[i]
+        left_token = text[0, i]
+        right_token = text[0, i + 1]
+        left_prob = math.exp(
+            prediction[0, index - 1, left_token] + prediction[0, index, left_token]
+        )
+        split_prob = math.exp(
+            prediction[0, index - 1, left_token] + prediction[0, index, right_token]
+        )
+        right_prob = math.exp(
+            prediction[0, index - 1, right_token] + prediction[0, index, right_token]
+        )
+        denom = left_prob + split_prob + right_prob
+        left[i] = left_prob / denom
+        right[i] = right_prob / denom
+    return torch.stack([pred_dur, left, right]), scores
 
 
 def teytaut_align(mels, text, mel_length, text_length, prediction):
@@ -174,9 +199,6 @@ def teytaut_align(mels, text, mel_length, text_length, prediction):
     mask_ST = mask_from_lens(soft, text_length, mel_length)
     duration = maximum_path(soft, mask_ST)
     return duration
-
-
-from torch.nn import functional as F
 
 
 def soft_alignment(pred, phonemes):

@@ -15,6 +15,7 @@ import random
 from scipy.signal import get_window
 from utils import DecoderPrediction, clamped_exp, leaky_clamp
 from .common import InstanceNorm1d
+from .adawin import AdaConvBlock1d
 
 
 import numpy as np
@@ -42,26 +43,27 @@ class TorchSTFT(torch.nn.Module):
             window=self.window,
             return_complex=True,
         )
+        mag = torch.abs(forward_transform) + 1e-9
+        x = torch.real(forward_transform) / mag
+        y = torch.imag(forward_transform) / mag
+        return torch.abs(forward_transform), x, y
 
-        return torch.abs(forward_transform), torch.angle(forward_transform)
-
-    def inverse(self, magnitude, phase):
+    def inverse(self, magnitude, x, y):
         inverse_transform = torch.istft(
-            magnitude * torch.exp(phase * 1j),
+            magnitude * (x + y * 1j),
             self.filter_length,
             self.hop_length,
             self.win_length,
             window=self.window,
         )
 
-        return inverse_transform.unsqueeze(
-            -2
-        )  # unsqueeze to stay consistent with conv_transpose1d implementation
+        # unsqueeze to stay consistent with conv_transpose1d implementation
+        return inverse_transform.unsqueeze(-2)
 
-    def forward(self, input_data):
-        self.magnitude, self.phase = self.transform(input_data)
-        reconstruction = self.inverse(self.magnitude, self.phase)
-        return reconstruction
+    # def forward(self, input_data):
+    #     self.magnitude, self.phase = self.transform(input_data)
+    #     reconstruction = self.inverse(self.magnitude, self.phase)
+    #     return reconstruction
 
 
 def padDiff(x):
@@ -88,7 +90,6 @@ class RingformerGenerator(torch.nn.Module):
         self.num_upsamples = len(upsample_rates)
         self.gen_istft_n_fft = gen_istft_n_fft
         self.gen_istft_hop_size = gen_istft_hop_size
-        resblock = AdaINResBlock1
 
         self.m_source = SourceModuleHnNSF(
             sampling_rate=sample_rate,
@@ -97,7 +98,7 @@ class RingformerGenerator(torch.nn.Module):
             voiced_threshod=10,
         )
         self.f0_upsamp = torch.nn.Upsample(
-            scale_factor=math.prod(upsample_rates) * gen_istft_hop_size
+            scale_factor=math.prod(upsample_rates) * gen_istft_hop_size, mode="linear"
         )
         self.noise_convs = nn.ModuleList()
         self.noise_res = nn.ModuleList()
@@ -125,26 +126,55 @@ class RingformerGenerator(torch.nn.Module):
             for j, (k, d) in enumerate(
                 zip(resblock_kernel_sizes, resblock_dilation_sizes)
             ):
-                self.resblocks.append(resblock(ch, k, d, style_dim))
+                self.resblocks.append(
+                    AdaINResBlock1(
+                        channels=ch,
+                        style_dim=style_dim,
+                        # window_length=37,
+                        kernel_size=k,
+                        dilation=d,
+                        # dropout=0.1,
+                    )
+                )
             c_cur = upsample_initial_channel // (2 ** (i + 1))
 
             if i + 1 < len(upsample_rates):  #
                 stride_f0 = math.prod(upsample_rates[i + 1 :])
                 self.noise_convs.append(
-                    Conv1d(
-                        gen_istft_n_fft + 2,
-                        c_cur,
-                        kernel_size=stride_f0 * 2,
-                        stride=stride_f0,
-                        padding=(stride_f0 + 1) // 2,
+                    weight_norm(
+                        Conv1d(
+                            gen_istft_n_fft + 2,
+                            c_cur,
+                            kernel_size=stride_f0 * 2,
+                            stride=stride_f0,
+                            padding=(stride_f0 + 1) // 2,
+                        )
                     )
                 )
-                self.noise_res.append(resblock(c_cur, 7, [1, 3, 5], style_dim))
+                self.noise_res.append(
+                    AdaINResBlock1(
+                        channels=c_cur,
+                        style_dim=style_dim,
+                        # window_length=37,
+                        kernel_size=7,
+                        dilation=[1, 3, 5],
+                        # dropout=0.1,
+                    )
+                )
             else:
                 self.noise_convs.append(
-                    Conv1d(gen_istft_n_fft + 2, c_cur, kernel_size=1)
+                    weight_norm(Conv1d(gen_istft_n_fft + 2, c_cur, kernel_size=1))
                 )
-                self.noise_res.append(resblock(c_cur, 11, [1, 3, 5], style_dim))
+                self.noise_res.append(
+                    AdaINResBlock1(
+                        channels=c_cur,
+                        style_dim=style_dim,
+                        # window_length=37,
+                        kernel_size=11,
+                        dilation=[1, 3, 5],
+                        # dropout=0.1,
+                    )
+                )
 
         self.conformers = nn.ModuleList()
         self.post_n_fft = self.gen_istft_n_fft
@@ -186,7 +216,8 @@ class RingformerGenerator(torch.nn.Module):
 
             har_source, noi_source, uv = self.m_source(f0)
             har_source = har_source.transpose(1, 2).squeeze(1)
-            har_spec, har_phase = self.stft.transform(har_source)
+            har_spec, har_x, har_y = self.stft.transform(har_source)
+            har_phase = torch.atan2(har_y, har_x)
             har = torch.cat([har_spec, har_phase], dim=1)
 
         for i in range(self.num_upsamples):
@@ -217,10 +248,13 @@ class RingformerGenerator(torch.nn.Module):
         x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
         x = self.conv_post(x)
 
-        spec = torch.exp(x[:, : self.post_n_fft // 2 + 1, :])
-        phase = torch.sin(x[:, self.post_n_fft // 2 + 1 :, :])
-        out = self.stft.inverse(spec, phase).to(x.device)
-        return DecoderPrediction(audio=out, magnitude=spec, phase=phase)
+        spec = x[:, : self.post_n_fft // 2 + 1, :]
+        spec = spec.abs() ** 3 + 1e-9
+        phase = x[:, self.post_n_fft // 2 + 1 :, :]
+        x_phase = torch.cos(phase)
+        y_phase = torch.sin(phase)
+        out = self.stft.inverse(spec, x_phase, y_phase).to(x.device)
+        return DecoderPrediction(audio=out, magnitude=spec, x=x_phase, y=y_phase)
 
     def remove_weight_norm(self):
         print("Removing weight norm...")
