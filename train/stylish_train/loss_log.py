@@ -44,11 +44,14 @@ class LossLog:
             writer_type = "train"
             lr = stage.optimizer.optimizers["speech_predictor"].param_groups[0]["lr"]
             lr_string = f", lr: {lr:.7f}"
+            disc_lr = stage.optimizer.optimizers["mrd"].param_groups[0]["lr"]
+            disc_lr_string = f", disc_lr: {disc_lr:.7f}"
             self.logger.info(
                 f"Epoch [{manifest.current_epoch}/{stage.max_epoch}], "
                 + f"Step [{manifest.current_step}/{manifest.steps_per_epoch}], "
                 + loss_string
                 + lr_string
+                + disc_lr_string
             )
         self.writer.add_scalar(
             f"{writer_type}/loss", self.total_loss, manifest.current_total_step
