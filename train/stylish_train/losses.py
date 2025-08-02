@@ -227,7 +227,7 @@ class DiscriminatorLossHelper(torch.nn.Module):
         self.last_loss = 0.5 * sub_count
         self.ideal_loss = 0.5 * sub_count
         self.f_max = 4.0
-        self.h_min = 0.1
+        self.h_min = 0.01
         self.x_max = 0.05 * sub_count
         self.x_min = 0.05 * sub_count
 
