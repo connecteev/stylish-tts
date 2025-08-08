@@ -363,10 +363,6 @@ class AdaWinInstance1d(nn.Module):
         self.pool = SumPool1d(window_length=window_length)
 
     def forward(self, x, s, lengths):
-        s = rearrange(s, "b s t -> b t s")
-        h = self.fc(s)
-        h = rearrange(h, "b t s -> b s t")
-
         # kernel = make_kernel_instance(self.channels, self.window_length, x.device)
         mask = None
         if lengths is not None:
@@ -374,11 +370,20 @@ class AdaWinInstance1d(nn.Module):
                 sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
             )
             mask = torch.broadcast_to(mask, (x.shape[0], self.channels, x.shape[2]))
+            s = (s * mask).sum(dim=2) / lengths.unsqueeze(1)
+        else:
+            s = s.mean(dim=2)
+
+        s = s.unsqueeze(2)
+        s = rearrange(s, "b s t -> b t s")
+        h = self.fc(s)
+        h = rearrange(h, "b t s -> b s t")
+
         gamma = h[:, : self.channels, :]
-        gamma = self.pool.mean(gamma, mask)
+        # gamma = self.pool.mean(gamma, mask)
         # gamma = calculate_mean(gamma, mask, kernel, self.window_length)
         beta = h[:, self.channels :, :]
-        beta = self.pool.mean(beta, mask)
+        # beta = self.pool.mean(beta, mask)
         # beta = calculate_mean(beta, mask, kernel, self.window_length)
         return (1 + gamma) * self.norm(x, mask) + beta
 
@@ -393,21 +398,26 @@ class AdaWinLayer1d(nn.Module):
         self.pool = SumPool1d(window_length=window_length)
 
     def forward(self, x, s, lengths):
-        s = rearrange(s, "b s t -> b t s")
-        h = self.fc(s)
-        h = rearrange(h, "b t s -> b s t")
-
-        # gb_kernel = make_kernel_layer(1, self.window_length, x.device)
         mask = None
         if lengths is not None:
             mask = (
                 sequence_mask(lengths, x.shape[2]).unsqueeze(1).to(x.dtype).to(x.device)
             )
+            s = (s * mask).sum(dim=2) / lengths.unsqueeze(1)
+        else:
+            s = s.mean(dim=2)
+
+        s = s.unsqueeze(2)
+        s = rearrange(s, "b s t -> b t s")
+        h = self.fc(s)
+        h = rearrange(h, "b t s -> b s t")
+
+        # gb_kernel = make_kernel_layer(1, self.window_length, x.device)
         gamma = h[:, :1, :]
-        gamma = self.pool.mean(gamma, mask)
+        # gamma = self.pool.mean(gamma, mask)
         # gamma = calculate_mean(gamma, mask, gb_kernel, self.window_length)
         beta = h[:, 1:, :]
-        beta = self.pool.mean(beta, mask)
+        # beta = self.pool.mean(beta, mask)
         # beta = calculate_mean(beta, mask, gb_kernel, self.window_length)
         # kernel = make_kernel_layer(self.channels, self.window_length, x.device)
         if lengths is not None:
