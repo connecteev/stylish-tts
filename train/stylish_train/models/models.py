@@ -69,3 +69,12 @@ def build_model(model_config: ModelConfig):
     )
 
     return nets
+
+
+def load_defaults(train, model):
+    # Load pretrained PLBERT
+    params = safetensors.torch.load_file(
+        hf_hub_download(repo_id="stylish-tts/plbert", filename="plbert.safetensors")
+    )
+    model.duration_predictor.bert.load_state_dict(params, strict=False)
+    # model.pitch_energy_predictor.bert.load_state_dict(params, strict=False)

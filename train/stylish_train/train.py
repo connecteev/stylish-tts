@@ -15,7 +15,7 @@ from meldataset import build_dataloader, FilePathDataset
 from batch_manager import BatchManager
 from stage import Stage, is_valid_stage, valid_stage_list
 
-from models.models import build_model
+from models.models import build_model, load_defaults
 from losses import GeneratorLoss, DiscriminatorLoss, WavLMLoss
 from utils import get_data_path_list, save_git_diff
 from loss_log import combine_logs
@@ -220,6 +220,8 @@ def main(
             train.manifest.current_step = 0
             train.stage.begin_stage(stage, train)
         logger.info(f"Loaded last checkpoint at {checkpoint} ...")
+    else:
+        load_defaults(train, train.model)
 
     train.manifest.stage = stage
 
@@ -239,6 +241,9 @@ def main(
         train.manifest.best_loss = float("inf")  # best test loss
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
+        # save_checkpoint(train, prefix="checkpoint_final", long=False)
+        # train.stage.validate(train)
+        # exit(0)
         if not train.stage.batch_sizes_exist():
             train.batch_manager.probe_loop(train)
             should_fast_forward = False
