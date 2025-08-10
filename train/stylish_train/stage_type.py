@@ -316,11 +316,11 @@ def validate_duration(batch, train):
             batch.text_length[i : i + 1],
             alignment,
         )
-        kernel = torch.FloatTensor(
-            [[[0.006, 0.061, 0.242, 0.383, 0.242, 0.061, 0.006]]]
-        ).to(batch.text.device)
-        pred_pitch = torch.nn.functional.conv1d(pred_pitch, kernel, padding=3)
-        pred_energy = torch.nn.functional.conv1d(pred_energy, kernel, padding=3)
+        # kernel = torch.FloatTensor(
+        #     [[[0.006, 0.061, 0.242, 0.383, 0.242, 0.061, 0.006]]]
+        # ).to(batch.text.device)
+        # pred_pitch = torch.nn.functional.conv1d(pred_pitch, kernel, padding=3)
+        # pred_energy = torch.nn.functional.conv1d(pred_energy, kernel, padding=3)
         pred = train.model.speech_predictor(
             batch.text[i : i + 1, : batch.text_length[i]],
             batch.text_length[i : i + 1],
