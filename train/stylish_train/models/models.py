@@ -21,7 +21,8 @@ from .duration_predictor import DurationPredictor
 from .pitch_energy_predictor import PitchEnergyPredictor
 
 from .text_encoder import TextEncoder
-from .fine_style_encoder import FineStyleEncoder
+from .fine_style_encoder import CoarseStyleEncoder
+from .style_encoder import StyleEncoder
 from .decoder import Decoder
 from .ringformer import RingformerGenerator
 from .pitch_energy_predictor import PitchEnergyPredictor
@@ -58,6 +59,10 @@ def build_model(model_config: ModelConfig):
         pitch_energy_config=model_config.pitch_energy_predictor,
     )
 
+    pe_text_encoder = TextEncoder(inter_dim=512, config=model_config.text_encoder)
+    pe_text_style_encoder = CoarseStyleEncoder(512, 64, model_config.style_encoder)
+    pe_mel_style_encoder = StyleEncoder(80, 64, 384, True)
+
     nets = Munch(
         text_aligner=text_aligner,
         duration_predictor=duration_predictor,
@@ -66,6 +71,9 @@ def build_model(model_config: ModelConfig):
         mpd=MultiPeriodDiscriminator(),
         msbd=MultiScaleSubbandCQTDiscriminator(sample_rate=model_config.sample_rate),
         mrd=MultiResolutionDiscriminator(),
+        pe_text_encoder=pe_text_encoder,
+        pe_text_style_encoder=pe_text_style_encoder,
+        pe_mel_style_encoder=pe_mel_style_encoder,
     )
 
     return nets

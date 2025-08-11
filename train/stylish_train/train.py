@@ -239,6 +239,8 @@ def main(
         train.manifest.best_loss = float("inf")  # best test loss
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
+        # save_checkpoint(train, prefix="checkpoint_test", long=False)
+        # exit(0)
         if not train.stage.batch_sizes_exist():
             train.batch_manager.probe_loop(train)
             should_fast_forward = False
