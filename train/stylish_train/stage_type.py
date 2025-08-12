@@ -277,7 +277,7 @@ def validate_textual(batch, train):
 
 
 stages["textual"] = StageType(
-    next_stage="duration",
+    next_stage="style",
     train_fn=train_textual,
     validate_fn=validate_textual,
     train_models=[
@@ -299,6 +299,79 @@ stages["textual"] = StageType(
         "alignment",
     ],
 )
+
+##### Style #####
+
+
+def train_style(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.Tensor]]:
+    with train.accelerator.autocast():
+        pe_text_encoding, _, _ = model.pe_text_encoder(batch.text, batch.text_length)
+        pe_text_style = model.pe_text_style_encoder(pe_text_encoding, batch.text_length)
+        pe_mel_style = model.pe_mel_style_encoder(batch.mel.unsqueeze(1))
+
+        train.stage.optimizer.zero_grad()
+        log = build_loss_log(train)
+        log.add_loss(
+            "style",
+            torch.nn.functional.smooth_l1_loss(pe_text_style, pe_mel_style) * 10,
+        )
+        train.accelerator.backward(log.backwards_loss())
+
+    return log.detach(), None
+
+
+@torch.no_grad()
+def validate_style(batch, train):
+    pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
+    pe_text_style = train.model.pe_text_style_encoder(
+        pe_text_encoding, batch.text_length
+    )
+    pe_mel_style = train.model.pe_mel_style_encoder(batch.mel.unsqueeze(1))
+    pred_pitch, pred_energy = train.model.pitch_energy_predictor(
+        pe_text_encoding, batch.text_length, batch.alignment, pe_mel_style
+    )
+    pred = train.model.speech_predictor(
+        batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
+    )
+    energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
+    log = build_loss_log(train)
+    train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
+    log.add_loss(
+        "pitch",
+        torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
+    )
+    log.add_loss("energy", torch.nn.functional.smooth_l1_loss(energy, pred_energy))
+    log.add_loss(
+        "style", torch.nn.functional.smooth_l1_loss(pe_text_style, pe_mel_style) * 10
+    )
+    return log, batch.alignment[0], make_list(pred.audio), batch.audio_gt
+
+
+stages["style"] = StageType(
+    next_stage="duration",
+    train_fn=train_style,
+    validate_fn=validate_style,
+    train_models=[
+        "pe_text_style_encoder",
+    ],
+    eval_models=[
+        "pe_mel_style_encoder",
+        "pitch_energy_predictor",
+        "pe_text_encoder",
+        "speech_predictor",
+    ],
+    discriminators=[],
+    inputs=[
+        "text",
+        "text_length",
+        "mel",
+        "mel_length",
+        "audio_gt",
+        "pitch",
+        "alignment",
+    ],
+)
+
 
 ##### Duration #####
 

@@ -34,6 +34,11 @@ training_plan:
     epochs: 20
     probe_batch_max: 32
     lr: 1e-4
+  style:
+    # training for style from text
+    epochs: 5
+    probe_batch_max: 64
+    lr: 1e-5
 
 dataset:
   train_data: "path/to/your/train-list.txt"
