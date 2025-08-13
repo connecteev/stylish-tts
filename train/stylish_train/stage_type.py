@@ -169,9 +169,9 @@ def train_acoustic(
 @torch.no_grad()
 def validate_acoustic(batch, train):
     energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
-    pred_pitch, pred_energy = train.model.pitch_energy_predictor(
-        batch.text, batch.text_length, batch.alignment
-    )
+    # pred_pitch, pred_energy = train.model.pitch_energy_predictor(
+    #     batch.text, batch.text_length, batch.alignment
+    # )
     pred = train.model.speech_predictor(
         batch.text, batch.text_length, batch.alignment, batch.pitch, energy
     )
@@ -328,7 +328,7 @@ def validate_style(batch, train):
     )
     pe_mel_style = train.model.pe_mel_style_encoder(batch.mel.unsqueeze(1))
     pred_pitch, pred_energy = train.model.pitch_energy_predictor(
-        pe_text_encoding, batch.text_length, batch.alignment, pe_mel_style
+        pe_text_encoding, batch.text_length, batch.alignment, pe_text_style
     )
     pred = train.model.speech_predictor(
         batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
@@ -396,6 +396,10 @@ def train_duration(
 
 @torch.no_grad()
 def validate_duration(batch, train):
+    pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
+    pe_text_style = train.model.pe_text_style_encoder(
+        pe_text_encoding, batch.text_length
+    )
     duration = train.model.duration_predictor(batch.text, batch.text_length)
     results = []
     for i in range(duration.shape[0]):
@@ -405,9 +409,10 @@ def validate_duration(batch, train):
         alignment = duration_to_alignment(dur)
         alignment = rearrange(alignment, "t a -> 1 t a")
         pred_pitch, pred_energy = train.model.pitch_energy_predictor(
-            batch.text[i : i + 1, : batch.text_length[i]],
+            pe_text_encoding[i : i + 1, :, : batch.text_length[i]],
             batch.text_length[i : i + 1],
             alignment,
+            pe_text_style[i : i + 1],
         )
         # kernel = torch.FloatTensor(
         #     [[[0.006, 0.061, 0.242, 0.383, 0.242, 0.061, 0.006]]]
@@ -442,7 +447,12 @@ stages["duration"] = StageType(
     train_models=[
         "duration_predictor",
     ],
-    eval_models=["pitch_energy_predictor", "speech_predictor"],
+    eval_models=[
+        "pitch_energy_predictor",
+        "speech_predictor",
+        "pe_text_encoder",
+        "pe_text_style_encoder",
+    ],
     discriminators=[],
     inputs=[
         "text",

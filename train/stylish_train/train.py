@@ -240,6 +240,7 @@ def main(
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
         # save_checkpoint(train, prefix="checkpoint_test", long=False)
+        # train.stage.validate(train)
         # exit(0)
         if not train.stage.batch_sizes_exist():
             train.batch_manager.probe_loop(train)
