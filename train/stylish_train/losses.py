@@ -7,6 +7,7 @@ import torchaudio
 from transformers import AutoModel
 import numpy as np
 import k2
+from einops import rearrange
 
 
 class SpectralConvergenceLoss(torch.nn.Module):
@@ -358,41 +359,52 @@ class WavLMLoss(torch.nn.Module):
         return torch.nn.functional.l1_loss(wav_tensor, y_rec_tensor)
 
 
-def compute_duration_ce_loss(
-    duration_prediction: List[torch.Tensor],
-    duration: List[torch.Tensor],
-    text_length: List[int],
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """
-    Computes the duration and binary cross-entropy losses over a batch.
-    Returns (loss_ce, loss_dur).
-    """
-    loss_ce = 0
-    loss_dur = 0
-    for pred, dur, length in zip(duration_prediction, duration, text_length):
-        pred = pred[:length, :]
-        dur = dur[:length].long()
-        target = torch.zeros_like(pred)
-        for i in range(target.shape[0]):
-            target[i, : dur[i]] = 1
-        # dur_pred = torch.exp(pred).squeeze(1)
-        dur_pred = torch.sigmoid(pred).sum(dim=1)
-        loss_dur += F.l1_loss(dur_pred[1 : length - 1], dur[1 : length - 1])
-        loss_ce += F.binary_cross_entropy_with_logits(pred.flatten(), target.flatten())
-    n = len(text_length)
-    # return 0.0, loss_dur / n
-    return loss_ce / n, loss_dur / n
+class CDW_CCELoss(nn.Module):
+    def __init__(self, classes, *, alpha=1.0, weight=None):
+        super(CDW_CCELoss, self).__init__()
+        indices = torch.arange(classes)
+        distance_list = []
+        for i in range(classes):
+            distance_list.append(torch.abs(i - indices).clamp(max=7) ** alpha)
+        distance_weight = torch.stack(distance_list)
+        self.register_buffer("distance_weight", distance_weight)
+        if weight is not None:
+            self.register_buffer("custom_weight", weight)
+        else:
+            self.weight = None
+
+    def forward(self, pred, target):
+        """pred is of shape NxC, target is of shape N"""
+        index = torch.arange(pred.shape[0], device=pred.device)
+        if self.custom_weight is not None:
+            weight = self.custom_weight[target]
+            ce = torch.log_softmax(pred, dim=1)[index, target] * (weight / weight.sum())
+        else:
+            ce = torch.log_softmax(pred, dim=1)[index, target] / pred.shape[0]
+            exit(1)
+            pass
+        distance = self.distance_weight[target]
+        cdw = torch.log(1 - torch.softmax(pred, dim=1))  # * distance
+        cdw = cdw * (distance / distance.sum(dim=1, keepdim=True))
+        cdw = cdw / pred.shape[0]
+        return -ce.sum(), -cdw.sum() * 100
 
 
-def duration_loss(*, pred, gt_attn, lengths, mask):
-    pred = pred.squeeze(1)
-    gt = torch.log(1e-8 + gt_attn.sum(dim=2)) * ~mask
-    loss = 0
-    for pred_item, gt_item, length_item in zip(pred, gt, lengths):
-        loss += torch.sum(
-            (gt_item[1 : length_item - 1] - pred_item[1 : length_item - 1]) ** 2
-        ) / (length_item - 2)
-    return loss / lengths.shape[0]
+class DurationLoss(torch.nn.Module):
+    def __init__(self, *, class_count, weight):
+        super(DurationLoss, self).__init__()
+        self.loss = CDW_CCELoss(class_count, alpha=2, weight=weight)
+
+    def forward(self, pred: torch.Tensor, gt: torch.Tensor, text_length: torch.Tensor):
+        loss_ce = 0
+        loss_cdw = 0
+        for i in range(text_length.shape[0]):
+            ce, cdw = self.loss(
+                pred[i, : text_length[i]], gt[i, : text_length[i]].long()
+            )
+            loss_ce += ce
+            loss_cdw += cdw
+        return loss_ce / text_length.shape[0], loss_cdw / text_length.shape[0]
 
 
 # The following code was adapated from: https://github.com/huangruizhe/audio/blob/aligner_label_priors/examples/asr/librispeech_alignment/loss.py

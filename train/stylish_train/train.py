@@ -16,7 +16,7 @@ from batch_manager import BatchManager
 from stage import Stage, is_valid_stage, valid_stage_list
 
 from models.models import build_model
-from losses import GeneratorLoss, DiscriminatorLoss, WavLMLoss
+from losses import GeneratorLoss, DiscriminatorLoss, WavLMLoss, DurationLoss
 from utils import get_data_path_list, save_git_diff
 from loss_log import combine_logs
 from convert_to_onnx import convert_to_onnx
@@ -146,6 +146,7 @@ def main(
         model_config=train.model_config,
         pitch_path=train.config.dataset.pitch_path,
         alignment_path=train.config.dataset.alignment_path,
+        duration_processor=train.duration_processor,
     )
     val_time_bins, _ = val_dataset.time_bins()
     train.val_dataloader = build_dataloader(
@@ -158,6 +159,10 @@ def main(
         train=train,
     )
     train.val_dataloader = train.accelerator.prepare(train.val_dataloader)
+    train.duration_loss = DurationLoss(
+        class_count=train.model_config.duration_predictor.max_dur,
+        weight=val_dataset.duration_weights,
+    ).to(train.config.training.device)
 
     train.batch_manager = BatchManager(
         train.config.dataset,

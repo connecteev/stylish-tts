@@ -266,19 +266,6 @@ def save_git_diff(out_dir):
     print(f"Git diff saved to {diff_file}")
 
 
-def duration_to_alignment(duration: torch.Tensor) -> torch.Tensor:
-    """Convert a sequence of duration values to an attention matrix.
-
-    duration -- [t]ext length
-    result -- [t]ext length x [a]udio length"""
-    indices = torch.repeat_interleave(
-        torch.arange(duration.shape[0], device=duration.device), duration.to(torch.int)
-    )
-    result = torch.zeros((duration.shape[0], indices.shape[0]), device=duration.device)
-    result[indices, torch.arange(indices.shape[0])] = 1
-    return result
-
-
 def clamped_exp(x: torch.Tensor) -> torch.Tensor:
     x = x.clamp(-35, 35)
     return torch.exp(x)
@@ -307,3 +294,115 @@ class DecoderPrediction:
         self.x = x
         self.y = y
         self.magnitude = magnitude
+
+
+class DurationProcessor(torch.nn.Module):
+    def __init__(self, class_count, max_dur):
+        super(DurationProcessor, self).__init__()
+        self.class_count = class_count
+        self.max_dur = max_dur
+
+        class_to_dur_table = torch.Tensor(
+            [1, 2, 3, 4, 5, 6, 7, 9, 12, 15, 18, 22, 27, 32, 38, 46]
+        )
+        self.register_buffer("class_to_dur_table", class_to_dur_table)
+        dur_to_class_table = torch.Tensor(
+            [
+                0,
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                7,
+                7,
+                8,
+                8,
+                8,
+                9,
+                9,
+                9,
+                10,
+                10,
+                10,
+                11,
+                11,
+                11,
+                11,
+                11,
+                12,
+                12,
+                12,
+                12,
+                12,
+                13,
+                13,
+                13,
+                13,
+                13,
+                14,
+                14,
+                14,
+                14,
+                14,
+                14,
+                14,
+                15,
+                15,
+                15,
+                15,
+                15,
+                15,
+                15,
+                15,
+                15,
+            ]
+        )
+        self.register_buffer("dur_to_class_table", dur_to_class_table)
+
+    def class_to_dur_soft(self, class_dist):
+        return class_dist * self.class_to_dur_table
+
+    def class_to_dur_hard(self, classes):
+        classes = classes.clamp(min=0, max=self.class_count)
+        return self.class_to_dur_table[classes]
+
+    def dur_to_class(self, durs):
+        durs = durs.clamp(min=1, max=self.max_dur)
+        return self.dur_to_class_table[durs.long()]
+
+    def align_to_class(self, alignment):
+        result = alignment.sum(dim=-1).clamp(min=1, max=50)
+        result = self.dur_to_class(result)
+        return result
+
+    def prediction_to_duration(self, pred, text_length):
+        softdur = self.class_to_dur_soft(torch.softmax(pred, dim=-1))
+        softdur = softdur.sum(dim=-1).round().clamp(min=1)
+        argdur = self.class_to_dur_hard(torch.argmax(pred, dim=-1).long())
+        dur = (argdur * (argdur < 7)) + (softdur * (argdur >= 7))
+        dur = dur[:text_length]
+        return dur
+
+    def duration_to_alignment(self, duration: torch.Tensor) -> torch.Tensor:
+        """Convert a sequence of duration values to an attention matrix.
+
+        duration -- [t]ext length
+        result -- [t]ext length x [a]udio length"""
+        indices = torch.repeat_interleave(
+            torch.arange(duration.shape[0], device=duration.device),
+            duration.to(torch.int),
+        )
+        result = torch.zeros(
+            (duration.shape[0], indices.shape[0]), device=duration.device
+        )
+        result[indices, torch.arange(indices.shape[0])] = 1
+        return result
+
+    def forward(self, pred, text_length):
+        duration = self.prediction_to_duration(pred, text_length)
+        alignment = self.duration_to_alignment(duration)
+        return alignment

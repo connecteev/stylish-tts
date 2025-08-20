@@ -63,6 +63,8 @@ class DurationPredictor(nn.Module):
             nlayers=duration_config.n_layer,
             dropout=duration_config.dropout,
         )
+        self.dropout = torch.nn.Dropout(0.5)
+        # self.hybrid_dropout = HybridDropout()
         self.duration_proj = LinearNorm(inter_dim + style_dim, duration_config.max_dur)
         # self.blocks = nn.ModuleList()
         # for _ in range(nlayers):
@@ -84,6 +86,7 @@ class DurationPredictor(nn.Module):
         encoding, _, _ = self.text_encoder(texts, text_lengths)
         style = self.style_encoder(encoding, text_lengths)
         prosody = self.prosody_encoder(encoding, style, text_lengths)
+        prosody = self.dropout(prosody)
         duration = self.duration_proj(prosody)
         # x = texts
         # for block in self.blocks:

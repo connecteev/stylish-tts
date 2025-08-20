@@ -11,7 +11,6 @@ import torch
 import torchaudio
 import torch.utils.data
 from safetensors import safe_open
-from utils import duration_to_alignment
 
 import logging
 
@@ -29,16 +28,28 @@ class FilePathDataset(torch.utils.data.Dataset):
         model_config,
         pitch_path,
         alignment_path,
+        duration_processor,
     ):
         self.pitch = {}
         with safe_open(pitch_path, framework="pt", device="cpu") as f:
             for key in f.keys():
                 self.pitch[key] = f.get_tensor(key)
+        durations = torch.zeros([16], device="cpu")
         self.alignment = {}
         if osp.isfile(alignment_path):
             with safe_open(alignment_path, framework="pt", device="cpu") as f:
                 for key in f.keys():
-                    self.alignment[key] = f.get_tensor(key)
+                    alignment = f.get_tensor(key)
+                    self.alignment[key] = alignment
+                    dur = (
+                        duration_processor.dur_to_class(alignment[0])
+                        .long()
+                        .cpu()
+                        .numpy()
+                    )
+                    dur = torch.Tensor(np.bincount(dur, minlength=16))
+                    durations += dur
+        self.duration_weights = durations.sum() / (durations * durations.shape[0])
         self.data_list = []
         sentences = []
         for line in data_list:
@@ -245,12 +256,13 @@ class Collater(object):
       adaptive_batch_size (bool): if true, decrease batch size when long data comes.
     """
 
-    def __init__(self, return_wave=False, multispeaker=False):
+    def __init__(self, return_wave=False, multispeaker=False, *, train):
         self.text_pad_index = 0
         self.min_mel_length = 192
         self.max_mel_length = 192
         self.return_wave = return_wave
         self.multispeaker = multispeaker
+        self.train = train
 
     def __call__(self, batch):
         batch_size = len(batch)
@@ -326,7 +338,7 @@ class Collater(object):
                     elif pick < duration[1][i] + duration[2][i]:
                         pred_dur[i] -= 1
                         pred_dur[i + 1] += 1
-            alignment = duration_to_alignment(pred_dur)
+            alignment = self.train.duration_processor.duration_to_alignment(pred_dur)
             if alignment.shape[1] == mel_size:
                 alignments[bid, :text_size, :mel_size] = alignment
 
@@ -363,7 +375,7 @@ def build_dataloader(
     train,
 ):
     collate_config["multispeaker"] = multispeaker
-    collate_fn = Collater(**collate_config)
+    collate_fn = Collater(train=train, **collate_config)
     drop_last = not validation and probe_batch_size is not None
     data_loader = torch.utils.data.DataLoader(
         dataset,
