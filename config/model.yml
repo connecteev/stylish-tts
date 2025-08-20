@@ -42,7 +42,7 @@ style_encoder:
 
 duration_predictor:
   n_layer: 4
-  max_dur: 50 # maximum duration of a single phoneme
+  max_dur: 16
   dropout: 0.2
 
 pitch_energy_predictor:
