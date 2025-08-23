@@ -200,6 +200,7 @@ class RingformerGenerator(torch.nn.Module):
         self.conv_post.apply(init_weights)
         self.reflection_pad = torch.nn.ReflectionPad1d((1, 0))
         self.stft = TorchSTFT(
+            # TODO: Fix hardcoded device
             device="cuda",
             filter_length=self.gen_istft_n_fft,
             hop_length=self.gen_istft_hop_size,
@@ -268,7 +269,7 @@ class RingformerGenerator(torch.nn.Module):
 class AdaIN1d(nn.Module):
     def __init__(self, style_dim, num_features):
         super().__init__()
-        self.norm = InstanceNorm1d(num_features, affine=False)
+        self.norm = nn.InstanceNorm1d(num_features, affine=False)
         self.fc = nn.Linear(style_dim, num_features * 2)
         self.num_features = num_features
 
@@ -578,7 +579,9 @@ class SineGen(torch.nn.Module):
         #        std = self.sine_amp/3 -> max value ~ self.sine_amp
         # .       for voiced regions is self.noise_std
         noise_amp = uv * self.noise_std + (1 - uv) * self.sine_amp / 3
-        noise = noise_amp * torch.randn_like(sine_waves)
+        noise = noise_amp * torch.randn(
+            sine_waves.size(), dtype=sine_waves.dtype, device=sine_waves.device
+        )
 
         # first: set the unvoiced part to 0 by uv
         # then: additive noise

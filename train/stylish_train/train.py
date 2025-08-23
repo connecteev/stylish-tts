@@ -234,6 +234,7 @@ def main(
             train.base_output_dir,
             train.model,
             train.config.training.device,
+            train.duration_processor,
         )
         logger.info(f"Export to ONNX file {filename} complete")
         exit(0)
@@ -245,6 +246,13 @@ def main(
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
         # save_checkpoint(train, prefix="checkpoint_test", long=False)
+        # from models.stft import STFT
+        # stft = STFT(
+        #     filter_length=train.model_config.generator.gen_istft_n_fft,
+        #     hop_length=train.model_config.generator.gen_istft_hop_size,
+        #     win_length=train.model_config.generator.gen_istft_n_fft,
+        # )
+        # train.model.speech_predictor.generator.stft = stft.to(train.config.training.device).eval()
         # train.stage.validate(train)
         # exit(0)
         if not train.stage.batch_sizes_exist():

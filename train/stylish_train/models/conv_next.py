@@ -70,7 +70,7 @@ class ConvNeXtBlock(torch.nn.Module):
 class AdaNorm1d(torch.nn.Module):
     def __init__(self, style_dim, num_features):
         super().__init__()
-        self.norm = InstanceNorm1d(num_features, affine=False)
+        self.norm = nn.InstanceNorm1d(num_features, affine=False)
         self.fc = torch.nn.Linear(style_dim, num_features * 2)
 
     def forward(self, x, s):

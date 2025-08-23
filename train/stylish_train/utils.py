@@ -384,7 +384,7 @@ class DurationProcessor(torch.nn.Module):
         softdur = softdur.sum(dim=-1).round().clamp(min=1)
         argdur = self.class_to_dur_hard(torch.argmax(pred, dim=-1).long())
         dur = (argdur * (argdur < 7)) + (softdur * (argdur >= 7))
-        dur = dur[:text_length]
+        # dur = dur[:text_length]
         return dur
 
     def duration_to_alignment(self, duration: torch.Tensor) -> torch.Tensor:

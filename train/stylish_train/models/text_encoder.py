@@ -5,6 +5,7 @@ from torch import nn
 from torch.nn import functional as F
 from torch.nn.utils.parametrizations import weight_norm
 from einops import rearrange
+import einops._torch_specific
 from .common import LinearNorm, get_padding
 from utils import sequence_mask
 
@@ -27,8 +28,8 @@ class LayerNorm(nn.Module):
 
         x = (x - mean) * torch.rsqrt(variance + self.eps)
 
-        shape = [1, -1] + [1] * (n_dims - 2)
-        x = x * self.gamma.view(*shape) + self.beta.view(*shape)
+        # shape = [1, -1] + [1] * (n_dims - 2)
+        x = x * self.gamma.view(1, -1, 1) + self.beta.view(1, -1, 1)
         return x
 
 
@@ -104,17 +105,16 @@ class RotaryPositionalEmbeddings(nn.Module):
 
         self.base = base
         self.d = int(d)
-        self.cos_cached = None
-        self.sin_cached = None
+        # self.cos_cached = None
+        # self.sin_cached = None
 
     def _build_cache(self, x: torch.Tensor):
         r"""
         Cache $\cos$ and $\sin$ values
         """
         # Return if cache is already built
-        if self.cos_cached is not None and x.shape[0] <= self.cos_cached.shape[0]:
-            return
-
+        # if self.cos_cached is not None and x.shape[0] <= self.cos_cached.shape[0]:
+        #     return
         # Get sequence length
         seq_len = x.shape[0]
 
@@ -134,8 +134,7 @@ class RotaryPositionalEmbeddings(nn.Module):
         idx_theta2 = torch.cat([idx_theta, idx_theta], dim=1)
 
         # Cache them
-        self.cos_cached = idx_theta2.cos()[:, None, None, :]
-        self.sin_cached = idx_theta2.sin()[:, None, None, :]
+        return idx_theta2.cos()[:, None, None, :], idx_theta2.sin()[:, None, None, :]
 
     def _neg_half(self, x: torch.Tensor):
         # $\frac{d}{2}$
@@ -149,22 +148,24 @@ class RotaryPositionalEmbeddings(nn.Module):
         * `x` is the Tensor at the head of a key or a query with shape `[seq_len, batch_size, n_heads, d]`
         """
         # Cache $\cos$ and $\sin$ values
-        x = rearrange(x, "b h t d -> t b h d")
+        # x = rearrange(x, "b h t d -> t b h d")
+        x = torch.permute(x, (2, 0, 1, 3))
 
-        self._build_cache(x)
+        cos_cached, sin_cached = self._build_cache(x)
 
         # Split the features, we can choose to apply rotary embeddings only to a partial set of features.
         x_rope, x_pass = x[..., : self.d], x[..., self.d :]
-
         # Calculate
         # $[-x^{(\frac{d}{2} + 1)}, -x^{(\frac{d}{2} + 2)}, ..., -x^{(d)}, x^{(1)}, x^{(2)}, ..., x^{(\frac{d}{2})}]$
         neg_half_x = self._neg_half(x_rope)
 
-        x_rope = (x_rope * self.cos_cached[: x.shape[0]]) + (
-            neg_half_x * self.sin_cached[: x.shape[0]]
+        x_rope = (x_rope * cos_cached[: x.shape[0]]) + (
+            neg_half_x * sin_cached[: x.shape[0]]
         )
 
-        return rearrange(torch.cat((x_rope, x_pass), dim=-1), "t b h d -> b h t d")
+        result = torch.cat((x_rope, x_pass), dim=-1)
+        # result = rearrange(result, "t b h d -> b h t d")
+        return torch.permute(result, (1, 2, 0, 3))
 
 
 class MultiHeadAttention(nn.Module):
@@ -215,16 +216,29 @@ class MultiHeadAttention(nn.Module):
         k = self.conv_k(c)
         v = self.conv_v(c)
 
-        x, self.attn = self.attention(q, k, v, mask=attn_mask)
+        x, _ = self.attention(q, k, v, mask=attn_mask)
 
         x = self.conv_o(x)
         return x
 
+    def arrange_heads(self, x):
+        # x = rearrange(x, "b (h c) t-> b h t c", h=self.n_heads)
+        # x = x.view(x.shape[0], self.n_heads, -1, x.shape[2]).contiguous()
+        # x = x.transpose(2, 3)
+        x = x.chunk(chunks=self.n_heads, dim=1)
+        x = torch.stack(x)
+        x = x.permute(1, 0, 3, 2)
+        return x
+
     def attention(self, query, key, value, mask=None):
-        b, d, t_s, t_t = (*key.size(), query.size(2))
-        query = rearrange(query, "b (h c) t-> b h t c", h=self.n_heads)
-        key = rearrange(key, "b (h c) t-> b h t c", h=self.n_heads)
-        value = rearrange(value, "b (h c) t-> b h t c", h=self.n_heads)
+        b, d, t_s, t_t = (key.size(0), key.size(1), key.size(2), query.size(2))
+
+        # query = rearrange(query, "b (h c) t-> b h t c", h=self.n_heads)
+        query = self.arrange_heads(query)
+        # key = rearrange(key, "b (h c) t-> b h t c", h=self.n_heads)
+        key = self.arrange_heads(key)
+        # value = rearrange(value, "b (h c) t-> b h t c", h=self.n_heads)
+        value = self.arrange_heads(value)
 
         query = self.query_rotary_pe(query)
         key = self.key_rotary_pe(key)
@@ -264,7 +278,7 @@ class MultiHeadAttention(nn.Module):
             # p_attn is not necessary in practise
             return output, None
         else:
-            scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(
+            scores = torch.matmul(query, key.transpose(2, 3)) / math.sqrt(
                 self.k_channels
             )
 
@@ -344,6 +358,9 @@ class Encoder(nn.Module):
                 MultiHeadAttention(
                     hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout
                 )
+                # nn.MultiheadAttention(
+                #     embed_dim=hidden_channels, num_heads=n_heads, dropout=p_dropout, batch_first=True
+                # )
             )
             self.norm_layers_1.append(LayerNorm(hidden_channels))
             self.ffn_layers.append(
@@ -359,10 +376,15 @@ class Encoder(nn.Module):
 
     def forward(self, x, x_mask):
         attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
+        # attn_mask = attn_mask.expand(-1, self.n_heads, -1, -1)
+        # attn_mask = attn_mask.view(-1, attn_mask.shape[2], attn_mask.shape[3])
         for i in range(self.n_layers):
             x = x * x_mask
+            # xt = x.transpose(1, 2)
+            # y, _ = self.attn_layers[i](xt, xt, xt, attn_mask=attn_mask)
             y = self.attn_layers[i](x, x, attn_mask)
             y = self.drop(y)
+            # y = y.transpose(1, 2)
             x = self.norm_layers_1[i](x + y)
             y = self.ffn_layers[i](x, x_mask)
             y = self.drop(y)
@@ -435,6 +457,6 @@ class TextEncoder(nn.Module):
         if self.n_spks > 1:
             x = torch.cat([x, spks.unsqueeze(-1).repeat(1, 1, x.shape[-1])], dim=1)
         x = self.encoder(x, x_mask)
-        mu = self.proj_m(x) * x_mask
 
+        mu = self.proj_m(x) * x_mask
         return mu, x, x_mask

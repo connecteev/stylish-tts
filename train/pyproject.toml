@@ -4,8 +4,8 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "nltk>=3.9.1",
-    "torch~=2.5.1",
-    "torchaudio~=2.5.1",
+    "torch~=2.8",
+    "torchaudio~=2.8",
     "numpy>=2.0.2",
     "munch>=4.0.0",
     "einops>=0.8.0",
@@ -18,11 +18,14 @@ dependencies = [
     "pydantic>=2.10.6",
     "tensorboard>=2.18.0",
     "tqdm>=4.67.1",
-    "k2>=1.24.4.dev20250208",
+    "k2>=1.24.4.dev20250807",
     "onnx>=1.17.0",
     "stylish-lib",
     "onnxruntime-gpu>=1.22.0",
     "nvidia-ml-py3>=7.352.0",
+    "onnxscript>=0.3.2",
+    "onnx-diagnostic>=0.7.6",
+    "ai-edge-torch>=0.6.0",
 ]
 
 [dependency-groups]
@@ -32,7 +35,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-k2 = { url = "https://huggingface.co/csukuangfj/k2/resolve/main/ubuntu-cuda/k2-1.24.4.dev20250208+cuda12.4.torch2.5.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"}
+k2 = { url = "https://huggingface.co/csukuangfj/k2/resolve/main/ubuntu-cuda/k2-1.24.4.dev20250807+cuda12.8.torch2.8.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"}
 stylish-lib = { path = "../lib/", editable = true }
 
 # [[tool.uv.index]]
