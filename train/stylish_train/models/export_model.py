@@ -46,8 +46,8 @@ class ExportModel(torch.nn.Module):
         # alignment = self.duration_predict(texts, text_lengths)
         pe_text_encoding, _, _ = self.pe_text_encoder(texts, text_lengths)
         pe_text_style = self.pe_text_style_encoder(pe_text_encoding, text_lengths)
-        pitch, energy = self.pitch_energy_predictor.infer(
-            pe_text_encoding, alignment, pe_text_style
+        pitch, energy = self.pitch_energy_predictor(
+            pe_text_encoding, text_lengths, alignment, pe_text_style
         )
         prediction = self.speech_predictor(
             texts, text_lengths, alignment, pitch, energy

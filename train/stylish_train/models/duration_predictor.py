@@ -7,7 +7,7 @@ from .text_encoder import FFN, MultiHeadAttention, sequence_mask
 from .common import InstanceNorm1d
 from .conv_next import ConvNeXtBlock
 from .text_encoder import TextEncoder
-from .fine_style_encoder import FineStyleEncoder
+from .fine_style_encoder import CoarseStyleEncoder
 from .prosody_encoder import ProsodyEncoder
 
 # class DurationPredictor(nn.Module):
@@ -51,7 +51,7 @@ class DurationPredictor(nn.Module):
     ):
         super().__init__()
         self.text_encoder = TextEncoder(inter_dim=inter_dim, config=text_config)
-        self.style_encoder = FineStyleEncoder(
+        self.style_encoder = CoarseStyleEncoder(
             inter_dim,
             style_dim,
             config=style_config,

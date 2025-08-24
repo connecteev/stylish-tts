@@ -55,9 +55,9 @@ def sequence_mask(length, max_length=None):
     return x.unsqueeze(0) < length.unsqueeze(1)
 
 
-def length_to_mask(lengths) -> torch.Tensor:
+def length_to_mask(lengths, max_length) -> torch.Tensor:
     mask = (
-        torch.arange(lengths.max())
+        torch.arange(max_length)
         .unsqueeze(0)
         .expand(lengths.shape[0], -1)
         .type_as(lengths)

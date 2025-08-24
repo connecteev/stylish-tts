@@ -88,6 +88,7 @@ class RingformerGenerator(torch.nn.Module):
         super(RingformerGenerator, self).__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
+        self.upsample_rates = upsample_rates
         self.gen_istft_n_fft = gen_istft_n_fft
         self.gen_istft_hop_size = gen_istft_hop_size
 
@@ -112,7 +113,7 @@ class RingformerGenerator(torch.nn.Module):
                         upsample_initial_channel // (2 ** (i + 1)),
                         k,
                         u,
-                        padding=(k - u) // 2,
+                        # padding=(k - u) // 2,
                     )
                 )
             )
@@ -228,6 +229,9 @@ class RingformerGenerator(torch.nn.Module):
             x = rearrange(x, "b t f -> b f t")
 
             x = self.ups[i](x)
+            cut_begin = self.upsample_rates[i] // 2
+            cut_end = -cut_begin
+            x = x[:, :, cut_begin:cut_end]
             x_source = self.noise_convs[i](har)
             # if i == self.num_upsamples - 1:
             #     x = self.reflection_pad(x)

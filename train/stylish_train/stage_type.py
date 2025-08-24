@@ -218,20 +218,20 @@ def train_textual(
         pred_pitch, pred_energy = model.pitch_energy_predictor(
             pe_text_encoding, batch.text_length, batch.alignment, pe_mel_style
         )
-        pred = model.speech_predictor(
-            batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
-        )
+        # pred = model.speech_predictor(
+        #     batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
+        # )
         with torch.no_grad():
             energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
         train.stage.optimizer.zero_grad()
         log = build_loss_log(train)
-        train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
-        log.add_loss(
-            "generator",
-            train.generator_loss(
-                batch.audio_gt.detach().unsqueeze(1).float(), pred.audio, ["mrd"]
-            ).mean(),
-        )
+        # train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
+        # log.add_loss(
+        #     "generator",
+        #     train.generator_loss(
+        #         batch.audio_gt.detach().unsqueeze(1).float(), pred.audio, ["mrd"]
+        #     ).mean(),
+        # )
         log.add_loss(
             "pitch",
             torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
@@ -246,7 +246,7 @@ def train_textual(
         # )
         train.accelerator.backward(log.backwards_loss())
 
-    return log.detach(), pred.audio.detach()
+    return log.detach(), None  # pred.audio.detach()
 
 
 @torch.no_grad()
@@ -286,8 +286,8 @@ stages["textual"] = StageType(
         "pe_mel_style_encoder",
     ],
     eval_models=["speech_predictor"],
-    # discriminators=[],
-    discriminators=["mrd"],
+    discriminators=[],
+    # discriminators=["mrd"],
     inputs=[
         "text",
         "text_length",

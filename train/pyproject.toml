@@ -26,6 +26,7 @@ dependencies = [
     "onnxscript>=0.3.2",
     "onnx-diagnostic>=0.7.6",
     "ai-edge-torch>=0.6.0",
+    "dlpack>=0.1",
 ]
 
 [dependency-groups]

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from utils import length_to_mask
 from stylish_lib.config_loader import ModelConfig
 from stylish_lib.text_utils import TextCleaner
 from models.export_model import ExportModel
@@ -9,7 +8,6 @@ from utils import length_to_mask
 import onnx
 from torch.export.dynamic_shapes import Dim
 from onnx_diagnostic.torch_export_patches import torch_export_patches
-import ai_edge_torch
 
 
 def add_meta_data_onnx(filename, key, value):
@@ -23,6 +21,8 @@ def add_meta_data_onnx(filename, key, value):
 def convert_to_onnx(
     model_config: ModelConfig, out_dir, model_in, device, duration_processor
 ):
+    import ai_edge_torch
+
     text_cleaner = TextCleaner(model_config.symbol)
     model = ExportModel(**model_in, device=device).eval()
     stft = STFT(
@@ -47,7 +47,7 @@ def convert_to_onnx(
     texts = texts.long()
     text_lengths = torch.zeros([1], dtype=int).to(device)
     text_lengths[0] = tokens.shape[1] + 2
-    text_mask = length_to_mask(text_lengths)
+    text_mask = length_to_mask(text_lengths, text_lengths[0])
 
     with torch.no_grad():
         with torch_export_patches():  # stop_if_static=1, verbose=1):
