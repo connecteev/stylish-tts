@@ -88,6 +88,7 @@ class RingformerGenerator(torch.nn.Module):
         super(RingformerGenerator, self).__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
+        self.upsample_rates = upsample_rates
         self.gen_istft_n_fft = gen_istft_n_fft
         self.gen_istft_hop_size = gen_istft_hop_size
 
@@ -112,7 +113,7 @@ class RingformerGenerator(torch.nn.Module):
                         upsample_initial_channel // (2 ** (i + 1)),
                         k,
                         u,
-                        padding=(k - u) // 2,
+                        # padding=(k - u) // 2,
                     )
                 )
             )
@@ -200,6 +201,7 @@ class RingformerGenerator(torch.nn.Module):
         self.conv_post.apply(init_weights)
         self.reflection_pad = torch.nn.ReflectionPad1d((1, 0))
         self.stft = TorchSTFT(
+            # TODO: Fix hardcoded device
             device="cuda",
             filter_length=self.gen_istft_n_fft,
             hop_length=self.gen_istft_hop_size,
@@ -227,6 +229,9 @@ class RingformerGenerator(torch.nn.Module):
             x = rearrange(x, "b t f -> b f t")
 
             x = self.ups[i](x)
+            cut_begin = self.upsample_rates[i] // 2
+            cut_end = -cut_begin
+            x = x[:, :, cut_begin:cut_end]
             x_source = self.noise_convs[i](har)
             # if i == self.num_upsamples - 1:
             #     x = self.reflection_pad(x)
@@ -268,7 +273,7 @@ class RingformerGenerator(torch.nn.Module):
 class AdaIN1d(nn.Module):
     def __init__(self, style_dim, num_features):
         super().__init__()
-        self.norm = InstanceNorm1d(num_features, affine=False)
+        self.norm = nn.InstanceNorm1d(num_features, affine=False)
         self.fc = nn.Linear(style_dim, num_features * 2)
         self.num_features = num_features
 
@@ -578,7 +583,9 @@ class SineGen(torch.nn.Module):
         #        std = self.sine_amp/3 -> max value ~ self.sine_amp
         # .       for voiced regions is self.noise_std
         noise_amp = uv * self.noise_std + (1 - uv) * self.sine_amp / 3
-        noise = noise_amp * torch.randn_like(sine_waves)
+        noise = noise_amp * torch.randn(
+            sine_waves.size(), dtype=sine_waves.dtype, device=sine_waves.device
+        )
 
         # first: set the unvoiced part to 0 by uv
         # then: additive noise

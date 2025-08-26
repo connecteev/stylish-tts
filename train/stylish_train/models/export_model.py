@@ -1,5 +1,5 @@
 import torch
-from utils import duration_to_alignment
+from einops import rearrange
 
 
 class ExportModel(torch.nn.Module):
@@ -9,6 +9,8 @@ class ExportModel(torch.nn.Module):
         speech_predictor,
         duration_predictor,
         pitch_energy_predictor,
+        pe_text_encoder,
+        pe_text_style_encoder,
         device="cuda",
         **kwargs
     ):
@@ -18,6 +20,8 @@ class ExportModel(torch.nn.Module):
             speech_predictor,
             duration_predictor,
             pitch_energy_predictor,
+            pe_text_encoder,
+            pe_text_style_encoder,
         ]:
             model.to(device).eval()
             for p in model.parameters():
@@ -25,27 +29,28 @@ class ExportModel(torch.nn.Module):
 
         self.device = device
         self.speech_predictor = speech_predictor
-        self.duration_predictor = duration_predictor
+        # self.duration_predictor = duration_predictor
         self.pitch_energy_predictor = pitch_energy_predictor
+        self.pe_text_encoder = pe_text_encoder
+        self.pe_text_style_encoder = pe_text_style_encoder
 
-    def duration_predict(self, texts, text_lengths):
-        duration = self.duration_predictor(texts, text_lengths)
-        duration = torch.sigmoid(duration).sum(axis=-1)
-        duration = torch.round(duration).clamp(min=1).long().squeeze()
+    # def duration_predict(self, texts, text_lengths):
+    #     duration = self.duration_predictor(texts, text_lengths)
+    #     duration = torch.sigmoid(duration).sum(axis=-1)
+    #     duration = torch.round(duration).clamp(min=1).long().squeeze()
+    #     result = duration_to_alignment(duration)
+    #     result = result.unsqueeze(0)
+    #     return result
 
-        result = duration_to_alignment(duration)
-        result = result.unsqueeze(0)
-        return result
-
-    def forward(self, texts, text_lengths):
-        alignment = self.duration_predict(texts, text_lengths)
-        pitch, energy = self.pitch_energy_predictor(texts, text_lengths, alignment)
-        kernel = torch.FloatTensor(
-            [[[0.006, 0.061, 0.242, 0.383, 0.242, 0.061, 0.006]]]
-        ).to(texts.device)
-        pitch = torch.nn.functional.conv1d(pitch, kernel, padding=3)
-        energy = torch.nn.functional.conv1d(energy, kernel, padding=3)
+    def forward(self, texts, text_lengths, alignment):
+        # alignment = self.duration_predict(texts, text_lengths)
+        pe_text_encoding, _, _ = self.pe_text_encoder(texts, text_lengths)
+        pe_text_style = self.pe_text_style_encoder(pe_text_encoding, text_lengths)
+        pitch, energy = self.pitch_energy_predictor(
+            pe_text_encoding, text_lengths, alignment, pe_text_style
+        )
         prediction = self.speech_predictor(
             texts, text_lengths, alignment, pitch, energy
         )
-        return prediction.audio.squeeze()
+        audio = rearrange(prediction.audio, "1 1 l -> l")
+        return audio

@@ -13,10 +13,12 @@ from losses import (
     MultiResolutionSTFTLoss,
     CTCLossWithLabelPriors,
     MagPhaseLoss,
+    DurationLoss,
 )
 from torch.utils.tensorboard.writer import SummaryWriter
 from stylish_lib.text_utils import TextCleaner
 import torchaudio
+from utils import DurationProcessor
 
 
 class Manifest:
@@ -102,8 +104,13 @@ class TrainContext:
             n_fft=self.model_config.generator.gen_istft_n_fft,
             hop_length=self.model_config.generator.gen_istft_hop_size,
         ).to(self.config.training.device)
+        self.duration_loss: DurationLoss = None
 
         self.text_cleaner = TextCleaner(self.model_config.symbol)
+        # TODO: Fix hardcoded value
+        self.duration_processor = DurationProcessor(class_count=16, max_dur=50).to(
+            self.config.training.device
+        )
 
         self.to_mel = torchaudio.transforms.MelSpectrogram(
             n_mels=self.model_config.n_mels,

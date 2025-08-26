@@ -5,8 +5,7 @@ from torch.nn import functional as F
 import torchaudio
 from einops import rearrange
 from loss_log import LossLog, build_loss_log
-from losses import compute_duration_ce_loss
-from utils import print_gpu_vram, log_norm, duration_to_alignment
+from utils import print_gpu_vram, log_norm
 from typing import List
 
 
@@ -128,9 +127,9 @@ def train_acoustic(
         pred = model.speech_predictor(
             batch.text, batch.text_length, batch.alignment, batch.pitch, energy
         )
-        pred_pitch, pred_energy = model.pitch_energy_predictor(
-            batch.text, batch.text_length, batch.alignment
-        )
+        # pred_pitch, pred_energy = model.pitch_energy_predictor(
+        #     batch.text, batch.text_length, batch.alignment
+        # )
         print_gpu_vram("predicted")
         train.stage.optimizer.zero_grad()
 
@@ -152,14 +151,14 @@ def train_acoustic(
         train.magphase_loss(pred, batch.audio_gt, log)
         print_gpu_vram("magphase_loss")
 
-        log.add_loss(
-            "pitch",
-            torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
-        )
-        log.add_loss(
-            "energy",
-            torch.nn.functional.smooth_l1_loss(energy, pred_energy),
-        )
+        # log.add_loss(
+        #     "pitch",
+        #     torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
+        # )
+        # log.add_loss(
+        #     "energy",
+        #     torch.nn.functional.smooth_l1_loss(energy, pred_energy),
+        # )
         train.accelerator.backward(log.backwards_loss())
         print_gpu_vram("backward")
 
@@ -169,22 +168,22 @@ def train_acoustic(
 @torch.no_grad()
 def validate_acoustic(batch, train):
     energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
-    pred_pitch, pred_energy = train.model.pitch_energy_predictor(
-        batch.text, batch.text_length, batch.alignment
-    )
+    # pred_pitch, pred_energy = train.model.pitch_energy_predictor(
+    #     batch.text, batch.text_length, batch.alignment
+    # )
     pred = train.model.speech_predictor(
         batch.text, batch.text_length, batch.alignment, batch.pitch, energy
     )
     log = build_loss_log(train)
     train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
-    log.add_loss(
-        "pitch",
-        torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
-    )
-    log.add_loss(
-        "energy",
-        torch.nn.functional.smooth_l1_loss(energy, pred_energy),
-    )
+    # log.add_loss(
+    #     "pitch",
+    #     torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
+    # )
+    # log.add_loss(
+    #     "energy",
+    #     torch.nn.functional.smooth_l1_loss(energy, pred_energy),
+    # )
     return log, batch.alignment[0], make_list(pred.audio), batch.audio_gt
 
 
@@ -192,7 +191,7 @@ stages["acoustic"] = StageType(
     next_stage="textual",
     train_fn=train_acoustic,
     validate_fn=validate_acoustic,
-    train_models=["speech_predictor", "pitch_energy_predictor"],
+    train_models=["speech_predictor"],
     eval_models=[],
     discriminators=["mrd"],
     inputs=[
@@ -213,23 +212,26 @@ def train_textual(
     batch, model, train, probing
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:
     with train.accelerator.autocast():
+        pe_text_encoding, _, _ = model.pe_text_encoder(batch.text, batch.text_length)
+        # pe_text_style = model.pe_text_style_encoder(pe_text_encoding, batch.text_length)
+        pe_mel_style = model.pe_mel_style_encoder(batch.mel.unsqueeze(1))
         pred_pitch, pred_energy = model.pitch_energy_predictor(
-            batch.text, batch.text_length, batch.alignment
+            pe_text_encoding, batch.text_length, batch.alignment, pe_mel_style
         )
-        pred = model.speech_predictor(
-            batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
-        )
+        # pred = model.speech_predictor(
+        #     batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
+        # )
         with torch.no_grad():
             energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
         train.stage.optimizer.zero_grad()
         log = build_loss_log(train)
-        train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
-        log.add_loss(
-            "generator",
-            train.generator_loss(
-                batch.audio_gt.detach().unsqueeze(1).float(), pred.audio, ["mrd"]
-            ).mean(),
-        )
+        # train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
+        # log.add_loss(
+        #     "generator",
+        #     train.generator_loss(
+        #         batch.audio_gt.detach().unsqueeze(1).float(), pred.audio, ["mrd"]
+        #     ).mean(),
+        # )
         log.add_loss(
             "pitch",
             torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
@@ -238,15 +240,22 @@ def train_textual(
             "energy",
             torch.nn.functional.smooth_l1_loss(energy, pred_energy),
         )
+        # log.add_loss(
+        #     "style",
+        #     torch.nn.functional.smooth_l1_loss(pe_text_style, pe_mel_style)
+        # )
         train.accelerator.backward(log.backwards_loss())
 
-    return log.detach(), pred.audio.detach()
+    return log.detach(), None  # pred.audio.detach()
 
 
 @torch.no_grad()
 def validate_textual(batch, train):
+    pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
+    # pe_text_style = train.model.pe_text_style_encoder(pe_text_encoding, batch.text_length)
+    pe_mel_style = train.model.pe_mel_style_encoder(batch.mel.unsqueeze(1))
     pred_pitch, pred_energy = train.model.pitch_energy_predictor(
-        batch.text, batch.text_length, batch.alignment
+        pe_text_encoding, batch.text_length, batch.alignment, pe_mel_style
     )
     pred = train.model.speech_predictor(
         batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
@@ -259,16 +268,26 @@ def validate_textual(batch, train):
         torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
     )
     log.add_loss("energy", torch.nn.functional.smooth_l1_loss(energy, pred_energy))
+    # log.add_loss(
+    #     "style",
+    #     torch.nn.functional.smooth_l1_loss(pe_text_style, pe_mel_style)
+    # )
     return log, batch.alignment[0], make_list(pred.audio), batch.audio_gt
 
 
 stages["textual"] = StageType(
-    next_stage="duration",
+    next_stage="style",
     train_fn=train_textual,
     validate_fn=validate_textual,
-    train_models=["pitch_energy_predictor"],
+    train_models=[
+        "pitch_energy_predictor",
+        "pe_text_encoder",
+        "pe_text_style_encoder",
+        "pe_mel_style_encoder",
+    ],
     eval_models=["speech_predictor"],
-    discriminators=["mrd"],
+    discriminators=[],
+    # discriminators=["mrd"],
     inputs=[
         "text",
         "text_length",
@@ -280,22 +299,93 @@ stages["textual"] = StageType(
     ],
 )
 
+##### Style #####
+
+
+def train_style(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.Tensor]]:
+    with train.accelerator.autocast():
+        pe_text_encoding, _, _ = model.pe_text_encoder(batch.text, batch.text_length)
+        pe_text_style = model.pe_text_style_encoder(pe_text_encoding, batch.text_length)
+        pe_mel_style = model.pe_mel_style_encoder(batch.mel.unsqueeze(1))
+
+        train.stage.optimizer.zero_grad()
+        log = build_loss_log(train)
+        log.add_loss(
+            "style",
+            torch.nn.functional.smooth_l1_loss(pe_text_style, pe_mel_style) * 10,
+        )
+        train.accelerator.backward(log.backwards_loss())
+
+    return log.detach(), None
+
+
+@torch.no_grad()
+def validate_style(batch, train):
+    pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
+    pe_text_style = train.model.pe_text_style_encoder(
+        pe_text_encoding, batch.text_length
+    )
+    pe_mel_style = train.model.pe_mel_style_encoder(batch.mel.unsqueeze(1))
+    pred_pitch, pred_energy = train.model.pitch_energy_predictor(
+        pe_text_encoding, batch.text_length, batch.alignment, pe_text_style
+    )
+    pred = train.model.speech_predictor(
+        batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
+    )
+    energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
+    log = build_loss_log(train)
+    train.stft_loss(pred.audio.squeeze(1), batch.audio_gt, log)
+    log.add_loss(
+        "pitch",
+        torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
+    )
+    log.add_loss("energy", torch.nn.functional.smooth_l1_loss(energy, pred_energy))
+    log.add_loss(
+        "style", torch.nn.functional.smooth_l1_loss(pe_text_style, pe_mel_style) * 10
+    )
+    return log, batch.alignment[0], make_list(pred.audio), batch.audio_gt
+
+
+stages["style"] = StageType(
+    next_stage="duration",
+    train_fn=train_style,
+    validate_fn=validate_style,
+    train_models=[
+        "pe_text_style_encoder",
+    ],
+    eval_models=[
+        "pe_mel_style_encoder",
+        "pitch_energy_predictor",
+        "pe_text_encoder",
+        "speech_predictor",
+    ],
+    discriminators=[],
+    inputs=[
+        "text",
+        "text_length",
+        "mel",
+        "mel_length",
+        "audio_gt",
+        "pitch",
+        "alignment",
+    ],
+)
+
+
 ##### Duration #####
 
 
 def train_duration(
     batch, model, train, probing
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:
+    targets = train.duration_processor.align_to_class(batch.alignment)
     duration = model.duration_predictor(batch.text, batch.text_length)
     train.stage.optimizer.zero_grad()
+    loss_ce, loss_cdw = train.duration_loss(duration, targets, batch.text_length)
+
     log = build_loss_log(train)
-    loss_ce, loss_dur = compute_duration_ce_loss(
-        duration,
-        batch.alignment.sum(dim=-1),
-        batch.text_length,
-    )
     log.add_loss("duration_ce", loss_ce)
-    log.add_loss("duration", loss_dur)
+    log.add_loss("duration", loss_cdw)
     train.accelerator.backward(log.backwards_loss())
 
     return log.detach(), None
@@ -303,24 +393,25 @@ def train_duration(
 
 @torch.no_grad()
 def validate_duration(batch, train):
+    pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
+    pe_text_style = train.model.pe_text_style_encoder(
+        pe_text_encoding, batch.text_length
+    )
     duration = train.model.duration_predictor(batch.text, batch.text_length)
     results = []
     for i in range(duration.shape[0]):
-        dur = torch.sigmoid(duration[i]).sum(axis=-1)
-        dur = torch.round(dur).clamp(min=1).long()
+        dur = train.duration_processor.prediction_to_duration(
+            duration[i], batch.text_length[i]
+        )
         dur = dur[: batch.text_length[i]]
-        alignment = duration_to_alignment(dur)
+        alignment = train.duration_processor.duration_to_alignment(dur)
         alignment = rearrange(alignment, "t a -> 1 t a")
         pred_pitch, pred_energy = train.model.pitch_energy_predictor(
-            batch.text[i : i + 1, : batch.text_length[i]],
+            pe_text_encoding[i : i + 1, :, : batch.text_length[i]],
             batch.text_length[i : i + 1],
             alignment,
+            pe_text_style[i : i + 1],
         )
-        # kernel = torch.FloatTensor(
-        #     [[[0.006, 0.061, 0.242, 0.383, 0.242, 0.061, 0.006]]]
-        # ).to(batch.text.device)
-        # pred_pitch = torch.nn.functional.conv1d(pred_pitch, kernel, padding=3)
-        # pred_energy = torch.nn.functional.conv1d(pred_energy, kernel, padding=3)
         pred = train.model.speech_predictor(
             batch.text[i : i + 1, : batch.text_length[i]],
             batch.text_length[i : i + 1],
@@ -331,13 +422,14 @@ def validate_duration(batch, train):
         audio = rearrange(pred.audio, "1 1 l -> l")
         results.append(audio)
     log = build_loss_log(train)
-    loss_ce, loss_dur = compute_duration_ce_loss(
+    loss_ce, loss_cdw = train.duration_loss(
         duration,
-        batch.alignment.sum(dim=-1),
+        train.duration_processor.align_to_class(batch.alignment),
         batch.text_length,
     )
     log.add_loss("duration_ce", loss_ce)
-    log.add_loss("duration", loss_dur)
+    log.add_loss("duration", loss_cdw)
+    # log.add_loss("duration", loss_dur)
 
     return log.detach(), alignment[0], results, batch.audio_gt
 
@@ -349,7 +441,12 @@ stages["duration"] = StageType(
     train_models=[
         "duration_predictor",
     ],
-    eval_models=["pitch_energy_predictor", "speech_predictor"],
+    eval_models=[
+        "pitch_energy_predictor",
+        "speech_predictor",
+        "pe_text_encoder",
+        "pe_text_style_encoder",
+    ],
     discriminators=[],
     inputs=[
         "text",

@@ -16,7 +16,7 @@ from batch_manager import BatchManager
 from stage import Stage, is_valid_stage, valid_stage_list
 
 from models.models import build_model
-from losses import GeneratorLoss, DiscriminatorLoss, WavLMLoss
+from losses import GeneratorLoss, DiscriminatorLoss, WavLMLoss, DurationLoss
 from utils import get_data_path_list, save_git_diff
 from loss_log import combine_logs
 from convert_to_onnx import convert_to_onnx
@@ -146,6 +146,7 @@ def main(
         model_config=train.model_config,
         pitch_path=train.config.dataset.pitch_path,
         alignment_path=train.config.dataset.alignment_path,
+        duration_processor=train.duration_processor,
     )
     val_time_bins, _ = val_dataset.time_bins()
     train.val_dataloader = build_dataloader(
@@ -158,6 +159,10 @@ def main(
         train=train,
     )
     train.val_dataloader = train.accelerator.prepare(train.val_dataloader)
+    train.duration_loss = DurationLoss(
+        class_count=train.model_config.duration_predictor.max_dur,
+        weight=val_dataset.duration_weights,
+    ).to(train.config.training.device)
 
     train.batch_manager = BatchManager(
         train.config.dataset,
@@ -229,6 +234,7 @@ def main(
             train.base_output_dir,
             train.model,
             train.config.training.device,
+            train.duration_processor,
         )
         logger.info(f"Export to ONNX file {filename} complete")
         exit(0)
@@ -239,6 +245,16 @@ def main(
         train.manifest.best_loss = float("inf")  # best test loss
         torch.cuda.synchronize()
         torch.cuda.empty_cache()
+        # save_checkpoint(train, prefix="checkpoint_test", long=False)
+        # from models.stft import STFT
+        # stft = STFT(
+        #     filter_length=train.model_config.generator.gen_istft_n_fft,
+        #     hop_length=train.model_config.generator.gen_istft_hop_size,
+        #     win_length=train.model_config.generator.gen_istft_n_fft,
+        # )
+        # train.model.speech_predictor.generator.stft = stft.to(train.config.training.device).eval()
+        # train.stage.validate(train)
+        # exit(0)
         if not train.stage.batch_sizes_exist():
             train.batch_manager.probe_loop(train)
             should_fast_forward = False

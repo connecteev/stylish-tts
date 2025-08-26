@@ -160,14 +160,14 @@ class STFT(torch.nn.Module):
             self.weight_backward_real,  # shape (freq_bins, 1, filter_length)
             bias=None,
             stride=self.hop_length,
-            padding=0,
+            # padding=0,
         )
         imag_rec = F.conv_transpose1d(
             imag_part,
             self.weight_backward_imag,
             bias=None,
             stride=self.hop_length,
-            padding=0,
+            # padding=0,
         )
         # sum => (B, 1, time)
         waveform = real_rec - imag_rec  # typical real iFFT has minus for imaginary part
