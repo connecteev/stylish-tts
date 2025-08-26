@@ -403,7 +403,7 @@ def validate_duration(batch, train):
         dur = train.duration_processor.prediction_to_duration(
             duration[i], batch.text_length[i]
         )
-        dur = dur[: text_length[i]]
+        dur = dur[: batch.text_length[i]]
         alignment = train.duration_processor.duration_to_alignment(dur)
         alignment = rearrange(alignment, "t a -> 1 t a")
         pred_pitch, pred_energy = train.model.pitch_energy_predictor(
