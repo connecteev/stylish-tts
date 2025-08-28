@@ -282,7 +282,6 @@ stages["textual"] = StageType(
     train_models=[
         "pitch_energy_predictor",
         "pe_text_encoder",
-        "pe_text_style_encoder",
         "pe_mel_style_encoder",
     ],
     eval_models=["speech_predictor"],

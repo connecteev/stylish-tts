@@ -214,9 +214,10 @@ class RingformerGenerator(torch.nn.Module):
         f0 = pitch
         s = style
         with torch.no_grad():
+            f0_len = f0.shape[1]
             f0 = self.f0_upsamp(f0[:, None]).transpose(1, 2)  # bs,n,t
 
-            har_source, noi_source, uv = self.m_source(f0)
+            har_source, noi_source, uv = self.m_source(f0, f0_len)
             har_source = har_source.transpose(1, 2).squeeze(1)
             har_spec, har_x, har_y = self.stft.transform(har_source)
             har_phase = torch.atan2(har_y, har_x)
@@ -480,7 +481,7 @@ class SineGen(torch.nn.Module):
         uv = (f0 > self.voiced_threshold).type(torch.float32)
         return uv
 
-    def _f02sine(self, f0_values):
+    def _f02sine(self, f0_values, source_len):
         """f0_values: (batchsize, length, dim)
         where dim indicates fundamental tone and overtones
         """
@@ -511,7 +512,8 @@ class SineGen(torch.nn.Module):
             #             phase = torch.cumsum(rad_values, dim=1) * 2 * np.pi
             rad_values = torch.nn.functional.interpolate(
                 rad_values.transpose(1, 2),
-                scale_factor=1 / self.upsample_scale,
+                size=source_len,
+                # scale_factor=1 / self.upsample_scale,
                 mode="linear",
             ).transpose(1, 2)
 
@@ -558,7 +560,7 @@ class SineGen(torch.nn.Module):
             sines = torch.cos(i_phase * 2 * torch.pi)
         return sines
 
-    def forward(self, f0):
+    def forward(self, f0, source_len):
         """sine_tensor, uv = forward(f0)
         input F0: tensor(batchsize=1, length, dim=1)
                   f0 for unvoiced steps should be 0
@@ -572,7 +574,7 @@ class SineGen(torch.nn.Module):
         )
 
         # generate sine waveforms
-        sine_waves = self._f02sine(fn) * self.sine_amp
+        sine_waves = self._f02sine(fn, source_len) * self.sine_amp
 
         # generate uv signal
         # uv = torch.ones(f0.shape)
@@ -639,7 +641,7 @@ class SourceModuleHnNSF(torch.nn.Module):
         self.l_linear = torch.nn.Linear(harmonic_num + 1, 1)
         self.l_tanh = torch.nn.Tanh()
 
-    def forward(self, x):
+    def forward(self, x, source_len):
         """
         Sine_source, noise_source = SourceModuleHnNSF(F0_sampled)
         F0_sampled (batchsize, length, 1)
@@ -648,7 +650,7 @@ class SourceModuleHnNSF(torch.nn.Module):
         """
         # source for harmonic branch
         with torch.no_grad():
-            sine_wavs, uv, _ = self.l_sin_gen(x)
+            sine_wavs, uv, _ = self.l_sin_gen(x, source_len)
         sine_merge = self.l_tanh(self.l_linear(sine_wavs))
 
         # source for noise branch, in the same shape as uv
