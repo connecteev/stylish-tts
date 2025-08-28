@@ -36,17 +36,17 @@ def main(stylish_path, duration_path, model_config_path, text, combine):
     # model_config = ModelConfig.model_validate_json(model_config)
     model_config = load_model_config_yaml(model_config_path)
     text_cleaner = TextCleaner(model_config.symbol)
-    dur_session = ai_edge_torch.load(duration_path)
-    # dur_session = ort.InferenceSession(
-    #     dur_path,
-    #     providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-    # )
+    # dur_session = ai_edge_torch.load(duration_path)
+    dur_session = ort.InferenceSession(
+        duration_path,
+        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+    )
     duration_processor = DurationProcessor(16, 50)
-    # session = ort.InferenceSession(
-    #     stylish_path,
-    #     providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-    # )
-    session = ai_edge_torch.load(stylish_path)
+    session = ort.InferenceSession(
+        stylish_path,
+        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+    )
+    # session = ai_edge_torch.load(stylish_path)
     samples = []
 
     start = perf_counter()
@@ -58,30 +58,30 @@ def main(stylish_path, duration_path, model_config_path, text, combine):
         text_lengths[0] = tokens.shape[1] + 2
         text_mask = torch.zeros(1, texts.shape[1], dtype=bool)
         # Load ONNX model
-        # dur_pred = dur_session.run(
-        #     None,
-        #     {
-        #         "texts": texts.cpu().numpy(),
-        #         "text_lengths": text_lengths.cpu().numpy(),
-        #     },
-        # )
-        dur_pred = dur_session(texts.cpu().numpy(), text_lengths.cpu().numpy())
+        dur_pred = dur_session.run(
+            None,
+            {
+                "texts": texts.cpu().numpy(),
+                "text_lengths": text_lengths.cpu().numpy(),
+            },
+        )
+        # dur_pred = dur_session(texts.cpu().numpy(), text_lengths.cpu().numpy())
 
-        dur_pred = torch.Tensor(dur_pred).squeeze(0)
+        dur_pred = torch.Tensor(dur_pred[0]).squeeze(0)
         alignment = duration_processor(dur_pred, text_lengths).unsqueeze(0)
 
-        # outputs = session.run(
-        #     None,
-        #     {
-        #         "texts": texts.cpu().numpy(),
-        #         "text_lengths": text_lengths.cpu().numpy(),
-        #         "alignment": alignment.cpu().numpy(),
-        #     },
-        # )
-        outputs = session(
-            texts.cpu().numpy(), text_lengths.cpu().numpy(), alignment.cpu().numpy()
+        outputs = session.run(
+            None,
+            {
+                "texts": texts.cpu().numpy(),
+                "text_lengths": text_lengths.cpu().numpy(),
+                "alignment": alignment.cpu().numpy(),
+            },
         )
-        samples.append(np.multiply(outputs, 32768).astype(np.int16))
+        # outputs = session(
+        #     texts.cpu().numpy(), text_lengths.cpu().numpy(), alignment.cpu().numpy()
+        # )
+        samples.append(np.multiply(outputs[0], 32768).astype(np.int16))
 
     if combine:
         outfile = "sample_combined.wav"

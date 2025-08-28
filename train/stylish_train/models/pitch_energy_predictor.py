@@ -158,7 +158,7 @@ class PitchEnergyPredictor(torch.nn.Module):
             text_lengths.device
         )
         prosody = self.prosody_encoder(text_encoding, style, text_lengths)
-        x = self.compute_cross(prosody, alignment, style, mask.squeeze(1))
+        x = self.compute_cross(prosody, alignment, style, mask)
 
         # x = prosody
         # x = rearrange(x, "b l c -> b c l")
