@@ -307,6 +307,10 @@ def train_style(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.T
         pe_text_encoding, _, _ = model.pe_text_encoder(batch.text, batch.text_length)
         pe_text_style = model.pe_text_style_encoder(pe_text_encoding, batch.text_length)
         pe_mel_style = model.pe_mel_style_encoder(batch.mel.unsqueeze(1))
+        pred_pitch, pred_energy = train.model.pitch_energy_predictor(
+            pe_text_encoding, batch.text_length, batch.alignment, pe_text_style
+        )
+        energy = log_norm(batch.mel.unsqueeze(1)).squeeze(1)
 
         train.stage.optimizer.zero_grad()
         log = build_loss_log(train)
@@ -314,6 +318,11 @@ def train_style(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.T
             "style",
             torch.nn.functional.smooth_l1_loss(pe_text_style, pe_mel_style) * 10,
         )
+        log.add_loss(
+            "pitch",
+            torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
+        )
+        log.add_loss("energy", torch.nn.functional.smooth_l1_loss(energy, pred_energy))
         train.accelerator.backward(log.backwards_loss())
 
     return log.detach(), None
