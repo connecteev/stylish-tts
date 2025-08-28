@@ -108,7 +108,7 @@ model_config_path: You should usually leave the model_config_path pointing at th
 
 config_path: You should make your own copy of the config.yaml in the repository and fill in the paths to your dataset.
 
-stage: Aside from alignment discussed above, the main three stages of training are 'acoustic', 'textual', and 'duration'. You always start in 'acoustic' and as each stage ends, the next will automatically begin. You only need to specify the other two if you are resuming from a checkpoint.
+stage: Aside from alignment discussed above, the main four stages of training are 'acoustic', 'textual', 'style', and 'duration'. You always start in 'acoustic' and as each stage ends, the next will automatically begin. You only need to specify the others if you are resuming from a checkpoint. Each stage has its own logs and tensorboard data in a separate subdirectory of the out_dir.
 
 out_dir: This is the destination path for all checkpoints, training logs, and tensorboard data. A separate sub-directory is created for each stage of training. Make sure to have plenty of disk space available here as checkpoints can take a large amount of storage.
 
@@ -128,11 +128,17 @@ By the end of acoustic training, the samples should sound almost identical to gr
 
 ### Textual training
 
-In textual training, the acoustic speech prediction is frozen while the focus of training becomes pitch and energy. Here the only 'cheating' we do is to use the ground-truth alignment. The predicted pitch and energy are used to directly predict the audio.
+In textual training, the acoustic speech prediction is frozen while the focus of training becomes pitch and energy. An acoustic style model still 'cheats' by using audio to generate a prosodic style. This style along with the base text are what is used to calculate the pitch and energy values for each time location.
 
 Here, `mel`, `pitch`, and `energy` losses are all important. You should expect mel loss to always be much higher in this stage than the acoustic stage. And it will only very gradually go down. Since there are three losses here, keeping an eye on total loss is more useful. It will be a lot less stable than in acoustic, but there is still a clear trend downwards.
 
 As training goes on, the voice should sound less strained, less 'warbly', and more natural. Make sure you are listening for the tone of the sound and how loud it is rather than strict prosody because the samples are still using the ground truth alignment.
+
+### Style training
+
+Here the only 'cheating' we do is to use the ground-truth alignment. The predicted pitch and energy are used to directly predict the audio. A textual style encoder is trained to produce the same outputs as the acoustic model from the previous stage.
+
+Aside from that, the training regimen should look a lot like the previous stage. `mel`, `pitch`, and `energy` should all trend downward but expect `mel` to be higher than the previous stage.
 
 ### Duration training
 
@@ -158,27 +164,32 @@ You can load a checkpoint from any stage via the --checkpoint argument. You stil
 
 Note that Stylish TTS checkpoints are not compatible with StyleTTS 2 checkpoints.
 
-# Export to ONNX
-This command will export ONNX file to `/path/to/your/output/stylish.onnx`
+# Export to tflite
+This command will export a tflite file to `/path/to/your/output/stylish.tflite` for the main speech prediction along with a second `/path/to/your/output/duration.tflite` for the duration model.
+
 ```sh
 cd stylish-tts/train
 uv run stylish_train/train.py \
-    --convert true \
+    --convert True \
     --model_config_path config/model.yml \
     --config_path /path/to/your/config.yml \
     --stage textual
     --out_dir /path/to/your/output \
     --checkpoint /path/to/your/checkpoint
 ```
-Using the ONNX model:
+
+Using the tflite model:
 ```sh
 cd stylish-tts/train
 uv run stylish_train/test_onnx.py
-    --onnx_path /path/to/your/output/stylish.onnx \
+    --stylish_path /path/to/your/output/stylish.tflite \
+    --duration_path /path/to/your/output/duration.tflite \
+    --model_path /path/to/your/model.yml \
     --text "ðˈiːz wˈɜː tˈuː hˈæv ˈæn ɪnˈɔːɹməs ˈɪmpækt , nˈɑːt ˈoʊnliː bɪkˈɔz ðˈeɪ wˈɜː əsˈoʊsiːˌeɪtᵻd wˈɪð kˈɑːnstəntˌiːn ," \
-    --text "ðˈiːz wˈɜː tˈuː hˈæv ˈæn ɪnˈɔːɹməs ˈɪmpækt , nˈɑːt ˈoʊnliː bɪkˈɔz ðˈeɪ wˈɜː əsˈoʊsiːˌeɪtᵻd wˈɪð kˈɑːnstəntˌiːn , bˈʌt ˈɔlsoʊ bɪkˈɔz , ˈæz ɪn sˈoʊ mˈɛniː ˈʌðɚ ˈɛɹiːəz , ðə dɪsˈɪʒənz tˈeɪkən bˈaɪ kˈɑːnstəntˌiːn ( ˈɔːɹ ɪn hˈɪz nˈeɪm ) wˈɜː tˈuː hˈæv ɡɹˈeɪt səɡnˈɪfɪkəns fˈɔːɹ sˈɛntʃɚiːz tˈuː kˈʌm ." \
+    --text "bˈʌt ˈɔlsoʊ bɪkˈɔz , ˈæz ɪn sˈoʊ mˈɛniː ˈʌðɚ ˈɛɹiːəz , ðə dɪsˈɪʒənz tˈeɪkən bˈaɪ kˈɑːnstəntˌiːn ( ˈɔːɹ ɪn hˈɪz nˈeɪm ) wˈɜː tˈuː hˈæv ɡɹˈeɪt səɡnˈɪfɪkəns fˈɔːɹ sˈɛntʃɚiːz tˈuː kˈʌm ." \
     --combine true
 ```
+
 Content: These were to have an enormous impact, not only because they were associated with Constantine, but also because, as in so many other areas, the decisions taken by Constantine (or in his name) were to have great significance for centuries to come.
 
 # Training New Languages
@@ -244,7 +255,10 @@ Most code taken from other sources is MIT-licensed and all original code in this
   - Harmonics Generation: "Neural Source-Filter Waveform Models for Statistical Parametric Speech Synthesis" by Wang, X., Takaki, S. & Yamagishi, J. [Paper](https://ieeexplore.ieee.org/document/8915761) [Code](https://github.com/nii-yamagishilab/project-CURRENNT-scripts/tree/master/waveform-modeling/project-NSF-v2-pretrained)
   - Attention (replacing ring attention): From Conformer implementation by Lucidrains [Code](https://github.com/lucidrains/conformer/blob/fc70d518d3770788d17a5d9799e08d23ad19c525/conformer/conformer.py#L66)
 
-- ONNX Compatibility
+- Duration prediction
+  - Ordinal regression loss: "Class Distance Weighted Cross-Entropy Loss for Ulcerative Colitis Severity Estimation" by Gorkem Polat, Ilkay Ergenc, Haluk Tarik Kani, Yesim Ozen Alahdab, Ozlen Atug, Alptekin Temizel [Paper](https://arxiv.org/abs/2202.05167)
+
+- tflite/ONNX Compatibility
   - Kokoro [Code](https://github.com/hexgrad/kokoro) 
   - Custom STFT Contributed to Kokoro by [Adrian Lyjak](https://github.com/adrianlyjak)
   - Loopless Duration Contributed to Kokoro by [Hexgrad](https://github.com/hexgrad)
