@@ -1,11 +1,11 @@
 import torch
 from .text_encoder import TextEncoder
-from .fine_style_encoder import FineStyleEncoder
+from .text_style_encoder import FineStyleEncoder
 from .prosody_encoder import ProsodyEncoder
 from .duration_predictor import DurationPredictor
 from .pitch_energy_predictor import PitchEnergyPredictor
 from .decoder import Decoder
-from .ringformer import RingformerGenerator
+from .generator import Generator
 
 
 class SpeechPredictor(torch.nn.Module):
@@ -29,7 +29,7 @@ class SpeechPredictor(torch.nn.Module):
             residual_dim=model_config.decoder.residual_dim,
         )
 
-        self.generator = RingformerGenerator(
+        self.generator = Generator(
             style_dim=model_config.style_dim,
             resblock_kernel_sizes=model_config.generator.resblock_kernel_sizes,
             upsample_rates=model_config.generator.upsample_rates,
@@ -57,9 +57,3 @@ class SpeechPredictor(torch.nn.Module):
             energy=energy,
         )
         return prediction
-
-    # def forward(self, texts, text_lengths, mel_lengths, alignment):
-    #     pitch, energy = self.pitch_energy_predictor(texts, text_lengths, mel_lengths, alignment)
-    #     return self.acoustic_train(
-    #         texts, text_lengths, mel_lengths, alignment, pitch, energy
-    #     )
