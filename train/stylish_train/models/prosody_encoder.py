@@ -4,9 +4,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from .common import LinearNorm
 from .text_encoder import FFN, MultiHeadAttention, sequence_mask
-from .common import InstanceNorm1d
-from .conv_next import ConvNeXtBlock
-from .adawin import AdaWinBlock1d, AdaWinLayer1d
+from .ada_norm import AdaptiveLayerNorm
 
 
 class ProsodyEncoder(nn.Module):
@@ -41,7 +39,7 @@ class ProsodyEncoder(nn.Module):
                 )
             )
             self.norm_layers_1.append(
-                AdaLayerNorm(
+                AdaptiveLayerNorm(
                     style_dim=sty_dim,
                     channels=hidden_channels,
                 )
@@ -56,7 +54,7 @@ class ProsodyEncoder(nn.Module):
                 )
             )
             self.norm_layers_2.append(
-                AdaLayerNorm(
+                AdaptiveLayerNorm(
                     style_dim=sty_dim,
                     channels=hidden_channels,
                 )
@@ -82,25 +80,3 @@ class ProsodyEncoder(nn.Module):
             x = torch.cat([x, style], dim=1)
         x = x * x_mask
         return x.transpose(-1, -2)
-
-
-class AdaLayerNorm(nn.Module):
-    def __init__(self, style_dim, channels, eps=1e-5):
-        super().__init__()
-        self.channels = channels
-        self.eps = eps
-
-        self.fc = nn.Linear(style_dim, channels * 2)
-
-    def forward(self, x, s):
-        x = x.transpose(-1, -2)
-        x = x.transpose(1, -1)
-
-        h = self.fc(s)
-        h = h.view(h.size(0), h.size(1), 1)
-        gamma, beta = torch.chunk(h, chunks=2, dim=1)
-        gamma, beta = gamma.transpose(1, -1), beta.transpose(1, -1)
-
-        x = F.layer_norm(x, (self.channels,), eps=self.eps)
-        x = (1 + gamma) * x + beta
-        return x.transpose(1, -1).transpose(-1, -2)

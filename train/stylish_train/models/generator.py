@@ -1,21 +1,19 @@
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-from torch.nn import Conv1d, ConvTranspose1d, AvgPool1d, Conv2d
+from torch.nn import Conv1d, ConvTranspose1d
 from torch.nn.utils import weight_norm, remove_weight_norm, spectral_norm
 
 from .conformer import Conformer
-from .common import init_weights, get_padding
+from .common import init_weights
 
 from .stft import STFT
 from einops import rearrange
 
 import math
-import random
 from scipy.signal import get_window
-from utils import DecoderPrediction, clamped_exp, leaky_clamp
-from .common import InstanceNorm1d
-from .adawin import AdaConvBlock1d
+from utils import DecoderPrediction
+from .ada_norm import AdaptiveGeneratorBlock
 
 
 import numpy as np
@@ -60,11 +58,6 @@ class TorchSTFT(torch.nn.Module):
         # unsqueeze to stay consistent with conv_transpose1d implementation
         return inverse_transform.unsqueeze(-2)
 
-    # def forward(self, input_data):
-    #     self.magnitude, self.phase = self.transform(input_data)
-    #     reconstruction = self.inverse(self.magnitude, self.phase)
-    #     return reconstruction
-
 
 def padDiff(x):
     return F.pad(
@@ -72,7 +65,7 @@ def padDiff(x):
     )
 
 
-class RingformerGenerator(torch.nn.Module):
+class Generator(torch.nn.Module):
     def __init__(
         self,
         style_dim,
@@ -85,7 +78,7 @@ class RingformerGenerator(torch.nn.Module):
         gen_istft_hop_size,
         sample_rate,
     ):
-        super(RingformerGenerator, self).__init__()
+        super(Generator, self).__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
         self.upsample_rates = upsample_rates
@@ -113,7 +106,6 @@ class RingformerGenerator(torch.nn.Module):
                         upsample_initial_channel // (2 ** (i + 1)),
                         k,
                         u,
-                        # padding=(k - u) // 2,
                     )
                 )
             )
@@ -128,13 +120,11 @@ class RingformerGenerator(torch.nn.Module):
                 zip(resblock_kernel_sizes, resblock_dilation_sizes)
             ):
                 self.resblocks.append(
-                    AdaINResBlock1(
+                    AdaptiveGeneratorBlock(
                         channels=ch,
                         style_dim=style_dim,
-                        # window_length=37,
                         kernel_size=k,
                         dilation=d,
-                        # dropout=0.1,
                     )
                 )
             c_cur = upsample_initial_channel // (2 ** (i + 1))
@@ -153,13 +143,11 @@ class RingformerGenerator(torch.nn.Module):
                     )
                 )
                 self.noise_res.append(
-                    AdaINResBlock1(
+                    AdaptiveGeneratorBlock(
                         channels=c_cur,
                         style_dim=style_dim,
-                        # window_length=37,
                         kernel_size=7,
                         dilation=[1, 3, 5],
-                        # dropout=0.1,
                     )
                 )
             else:
@@ -167,13 +155,11 @@ class RingformerGenerator(torch.nn.Module):
                     weight_norm(Conv1d(gen_istft_n_fft + 2, c_cur, kernel_size=1))
                 )
                 self.noise_res.append(
-                    AdaINResBlock1(
+                    AdaptiveGeneratorBlock(
                         channels=c_cur,
                         style_dim=style_dim,
-                        # window_length=37,
                         kernel_size=11,
                         dilation=[1, 3, 5],
-                        # dropout=0.1,
                     )
                 )
 
@@ -269,142 +255,6 @@ class RingformerGenerator(torch.nn.Module):
         for l in self.resblocks:
             l.remove_weight_norm()
         remove_weight_norm(self.conv_post)
-
-
-class AdaIN1d(nn.Module):
-    def __init__(self, style_dim, num_features):
-        super().__init__()
-        self.norm = nn.InstanceNorm1d(num_features, affine=False)
-        self.fc = nn.Linear(style_dim, num_features * 2)
-        self.num_features = num_features
-
-    def forward(self, x, s):
-        s = rearrange(s, "b s t -> b t s")
-        h = self.fc(s)
-        h = rearrange(h, "b t s -> b s t")
-        # h = h.view(h.size(0), h.size(1), 1)
-        # gamma, beta = torch.chunk(h, chunks=2, dim=1)
-        gamma = h[:, : self.num_features, :]
-        beta = h[:, self.num_features :, :]
-        return (1 + gamma) * self.norm(x) + beta
-
-
-class AdaINResBlock1(torch.nn.Module):
-    def __init__(self, channels, kernel_size=3, dilation=(1, 3, 5), style_dim=64):
-        super(AdaINResBlock1, self).__init__()
-        self.convs1 = nn.ModuleList(
-            [
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=dilation[0],
-                        padding=get_padding(kernel_size, dilation[0]),
-                    )
-                ),
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=dilation[1],
-                        padding=get_padding(kernel_size, dilation[1]),
-                    )
-                ),
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=dilation[2],
-                        padding=get_padding(kernel_size, dilation[2]),
-                    )
-                ),
-            ]
-        )
-        self.convs1.apply(init_weights)
-
-        self.convs2 = nn.ModuleList(
-            [
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=1,
-                        padding=get_padding(kernel_size, 1),
-                    )
-                ),
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=1,
-                        padding=get_padding(kernel_size, 1),
-                    )
-                ),
-                weight_norm(
-                    Conv1d(
-                        channels,
-                        channels,
-                        kernel_size,
-                        1,
-                        dilation=1,
-                        padding=get_padding(kernel_size, 1),
-                    )
-                ),
-            ]
-        )
-        self.convs2.apply(init_weights)
-
-        self.adain1 = nn.ModuleList(
-            [
-                AdaIN1d(style_dim, channels),
-                AdaIN1d(style_dim, channels),
-                AdaIN1d(style_dim, channels),
-            ]
-        )
-
-        self.adain2 = nn.ModuleList(
-            [
-                AdaIN1d(style_dim, channels),
-                AdaIN1d(style_dim, channels),
-                AdaIN1d(style_dim, channels),
-            ]
-        )
-
-        self.alpha1 = nn.ParameterList(
-            [nn.Parameter(torch.ones(1, channels, 1)) for i in range(len(self.convs1))]
-        )
-        self.alpha2 = nn.ParameterList(
-            [nn.Parameter(torch.ones(1, channels, 1)) for i in range(len(self.convs2))]
-        )
-
-    def forward(self, x, s):
-        for c1, c2, n1, n2, a1, a2 in zip(
-            self.convs1, self.convs2, self.adain1, self.adain2, self.alpha1, self.alpha2
-        ):
-            xt = n1(x, s)
-            xt = xt + (1 / a1) * (torch.sin(a1 * xt) ** 2)  # Snake1D
-            xt = c1(xt)
-            xt = n2(xt, s)
-            xt = xt + (1 / a2) * (torch.sin(a2 * xt) ** 2)  # Snake1D
-            xt = c2(xt)
-            x = xt + x
-        return x
-
-    def remove_weight_norm(self):
-        for l in self.convs1:
-            remove_weight_norm(l)
-        for l in self.convs2:
-            remove_weight_norm(l)
 
 
 # The following code was adapted from: https://github.com/nii-yamagishilab/project-CURRENNT-scripts/tree/master/waveform-modeling/project-NSF-v2-pretrained

@@ -1,15 +1,5 @@
-# coding:utf-8
-
-
-import math
-
-import safetensors.torch
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
 from stylish_lib.config_loader import ModelConfig
-
 
 from .text_aligner import tdnn_blstm_ctc_model_base
 
@@ -21,16 +11,12 @@ from .duration_predictor import DurationPredictor
 from .pitch_energy_predictor import PitchEnergyPredictor
 
 from .text_encoder import TextEncoder
-from .fine_style_encoder import CoarseStyleEncoder
-from .style_encoder import StyleEncoder
-from .decoder import Decoder
-from .ringformer import RingformerGenerator
+from .text_style_encoder import CoarseStyleEncoder
+from .mel_style_encoder import MelStyleEncoder
 from .pitch_energy_predictor import PitchEnergyPredictor
 from .speech_predictor import SpeechPredictor
 
 from munch import Munch
-import safetensors
-from huggingface_hub import hf_hub_download
 
 import logging
 
@@ -61,7 +47,7 @@ def build_model(model_config: ModelConfig):
 
     pe_text_encoder = TextEncoder(inter_dim=512, config=model_config.text_encoder)
     pe_text_style_encoder = CoarseStyleEncoder(512, 64, model_config.style_encoder)
-    pe_mel_style_encoder = StyleEncoder(80, 64, 384, True)
+    pe_mel_style_encoder = MelStyleEncoder(80, 64, 384, True)
 
     nets = Munch(
         text_aligner=text_aligner,
