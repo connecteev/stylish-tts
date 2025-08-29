@@ -184,14 +184,10 @@ def main(
         train.model[key].to(train.config.training.device)
 
     train.generator_loss = GeneratorLoss(
-        mpd=train.model.mpd,
         mrd=train.model.mrd,
-        msbd=train.model.msbd,
     ).to(train.config.training.device)
     train.discriminator_loss = DiscriminatorLoss(
-        mpd=train.model.mpd,
         mrd=train.model.mrd,
-        msbd=train.model.msbd,
     ).to(train.config.training.device)
     train.wavlm_loss = WavLMLoss(
         train.model_config.slm.model,

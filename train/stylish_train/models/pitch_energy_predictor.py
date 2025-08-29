@@ -5,7 +5,7 @@ from torch.nn.utils.parametrizations import weight_norm
 from .text_encoder import MultiHeadAttention
 from .prosody_encoder import ProsodyEncoder
 from utils import length_to_mask
-from .ada_norm import AdaptiveLayerNorm, AdaptivePitchBlock
+from .ada_norm import AdaptiveLayerNorm, AdaptiveDecoderBlock
 
 
 class PitchEnergyPredictor(torch.nn.Module):
@@ -56,7 +56,7 @@ class PitchEnergyPredictor(torch.nn.Module):
 
         self.F0 = torch.nn.ModuleList(
             [
-                AdaptivePitchBlock(
+                AdaptiveDecoderBlock(
                     512 + style_dim, 512 + style_dim, style_dim, dropout_p=dropout
                 )
                 for _ in range(3)
@@ -65,7 +65,7 @@ class PitchEnergyPredictor(torch.nn.Module):
 
         self.N = torch.nn.ModuleList(
             [
-                AdaptivePitchBlock(
+                AdaptiveDecoderBlock(
                     512 + style_dim, 512 + style_dim, style_dim, dropout_p=dropout
                 )
                 for _ in range(3)

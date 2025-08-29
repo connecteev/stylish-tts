@@ -9,7 +9,7 @@ from .duration_predictor import DurationPredictor
 from .pitch_energy_predictor import PitchEnergyPredictor
 
 from .text_encoder import TextEncoder
-from .text_style_encoder import CoarseStyleEncoder
+from .text_style_encoder import TextStyleEncoder
 from .mel_style_encoder import MelStyleEncoder
 from .pitch_energy_predictor import PitchEnergyPredictor
 from .speech_predictor import SpeechPredictor
@@ -44,7 +44,7 @@ def build_model(model_config: ModelConfig):
     )
 
     pe_text_encoder = TextEncoder(inter_dim=512, config=model_config.text_encoder)
-    pe_text_style_encoder = CoarseStyleEncoder(512, 64, model_config.style_encoder)
+    pe_text_style_encoder = TextStyleEncoder(512, 64, model_config.style_encoder)
     pe_mel_style_encoder = MelStyleEncoder(80, 64, 384, True)
 
     nets = Munch(

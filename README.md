@@ -237,7 +237,6 @@ Most code taken from other sources is MIT-licensed and all original code in this
 - Discriminators
   - "Improve GAN-based Neural Vocoder using Truncated Pointwise Relativistic Least Square GAN" by Yanli Li, Congyi Wang [Paper](https://dl.acm.org/doi/abs/10.1145/3573834.3574506)
   - Some code adapted from "Vocos: Closing the gap between time-domain and Fourier-based neural vocoders for high-quality audio synthesis" [Paper](https://arxiv.org/pdf/2306.00814.pdf) [Code](https://github.com/gemelo-ai/vocos)
-  - Multi-Scale Sub-Band Discriminator: "Multi-Scale Sub-Band Constant-Q Transform Discriminator for High-Fidelity Vocoder" by Yicheng Gu, Xueyao Zhang, Liumeng Xue, Zhizheng Wu [Paper](https://arxiv.org/abs/2311.14957) [Code (ringformer)](https://github.com/seongho608/RingFormer/blob/073f59b5a0502bf82cfadaf1f6354c9130fd76d8/models.py#L1515)
   - Discriminator Regulator: "Mind the (optimality) Gap: A Gap-Aware Learning Rate Scheduler for
   Adversarial Nets" by Hussein Hazimeh, Natalia Ponomareva [Paper](https://arxiv.org/abs/2302.00089) [Code](https://github.com/google-research/google-research/blob/master/adversarial_nets_lr_scheduler/demo.ipynb)
 

@@ -1,6 +1,6 @@
 import torch
 from .text_encoder import TextEncoder
-from .text_style_encoder import FineStyleEncoder
+from .text_style_encoder import TextStyleEncoder
 from .prosody_encoder import ProsodyEncoder
 from .duration_predictor import DurationPredictor
 from .pitch_energy_predictor import PitchEnergyPredictor
@@ -15,7 +15,7 @@ class SpeechPredictor(torch.nn.Module):
             inter_dim=model_config.inter_dim, config=model_config.text_encoder
         )
 
-        self.style_encoder = FineStyleEncoder(
+        self.style_encoder = TextStyleEncoder(
             model_config.inter_dim,
             model_config.style_dim,
             model_config.style_encoder,
@@ -48,11 +48,11 @@ class SpeechPredictor(torch.nn.Module):
             text_encoding @ alignment,
             pitch,
             energy,
-            style @ alignment,
+            style,
         )
         prediction = self.generator(
             mel=mel,
-            style=style @ alignment,
+            style=style,
             pitch=f0_curve,
             energy=energy,
         )

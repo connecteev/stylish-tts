@@ -1,6 +1,6 @@
 import torch
 from torch.nn.utils.parametrizations import weight_norm
-from .ada_norm import AdaDecoderBlock
+from .ada_norm import AdaptiveDecoderBlock
 
 
 class Decoder(torch.nn.Module):
@@ -15,7 +15,7 @@ class Decoder(torch.nn.Module):
     ):
         super().__init__()
 
-        self.encode = AdaDecoderBlock(
+        self.encode = AdaptiveDecoderBlock(
             dim_in=dim_in + 2,
             dim_out=hidden_dim,
             style_dim=style_dim,
@@ -23,7 +23,7 @@ class Decoder(torch.nn.Module):
 
         self.decode = torch.nn.ModuleList(
             [
-                AdaDecoderBlock(
+                AdaptiveDecoderBlock(
                     dim_in=hidden_dim + 2 + residual_dim,
                     dim_out=hidden_dim,
                     style_dim=style_dim,

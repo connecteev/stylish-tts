@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.nn import Conv1d, ConvTranspose1d
-from torch.nn.utils.parametrizations import weight_norm, remove_weight_norm
+from torch.nn.utils.parametrizations import weight_norm
 
 from .conformer import Conformer
 from .common import init_weights
@@ -106,6 +106,7 @@ class Generator(torch.nn.Module):
                         upsample_initial_channel // (2 ** (i + 1)),
                         k,
                         u,
+                        padding=(k - u) // 2,
                     )
                 )
             )
@@ -216,15 +217,11 @@ class Generator(torch.nn.Module):
             x = rearrange(x, "b t f -> b f t")
 
             x = self.ups[i](x)
-            cut_begin = self.upsample_rates[i] // 2
-            cut_end = -cut_begin
-            x = x[:, :, cut_begin:cut_end]
             x_source = self.noise_convs[i](har)
             # if i == self.num_upsamples - 1:
             #     x = self.reflection_pad(x)
             #     x_source = self.reflection_pad(x_source)
 
-            s = torch.nn.functional.interpolate(s, size=x.shape[2], mode="nearest")
             x_source = self.noise_res[i](x_source, s)
 
             x = x + x_source
@@ -247,14 +244,6 @@ class Generator(torch.nn.Module):
         y_phase = torch.sin(phase)
         out = self.stft.inverse(spec, x_phase, y_phase).to(x.device)
         return DecoderPrediction(audio=out, magnitude=spec, x=x_phase, y=y_phase)
-
-    def remove_weight_norm(self):
-        print("Removing weight norm...")
-        for l in self.ups:
-            remove_weight_norm(l)
-        for l in self.resblocks:
-            l.remove_weight_norm()
-        remove_weight_norm(self.conv_post)
 
 
 # The following code was adapted from: https://github.com/nii-yamagishilab/project-CURRENNT-scripts/tree/master/waveform-modeling/project-NSF-v2-pretrained

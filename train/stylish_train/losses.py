@@ -184,13 +184,11 @@ class MagPhaseLoss(torch.nn.Module):
 
 
 class DiscriminatorLoss(torch.nn.Module):
-    def __init__(self, *, mpd, mrd, msbd):
+    def __init__(self, *, mrd):
         super(DiscriminatorLoss, self).__init__()
         self.discriminators = torch.nn.ModuleDict(
             {
-                "mpd": DiscriminatorLossHelper(mpd, 5),
                 "mrd": DiscriminatorLossHelper(mrd, 3),
-                "msbd": DiscriminatorLossHelper(msbd, 3),
             }
         )
 
@@ -280,13 +278,11 @@ class DiscriminatorLossHelper(torch.nn.Module):
 
 
 class GeneratorLoss(torch.nn.Module):
-    def __init__(self, *, mpd, mrd, msbd):
+    def __init__(self, *, mrd):
         super(GeneratorLoss, self).__init__()
         self.generators = torch.nn.ModuleDict(
             {
-                "mpd": GeneratorLossHelper(mpd),
                 "mrd": GeneratorLossHelper(mrd),
-                "msbd": GeneratorLossHelper(msbd),
             }
         )
 

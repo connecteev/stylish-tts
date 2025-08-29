@@ -1,7 +1,7 @@
 import torch
 from .common import LinearNorm
 from .text_encoder import TextEncoder
-from .text_style_encoder import CoarseStyleEncoder
+from .text_style_encoder import TextStyleEncoder
 from .prosody_encoder import ProsodyEncoder
 
 
@@ -11,7 +11,7 @@ class DurationPredictor(torch.nn.Module):
     ):
         super().__init__()
         self.text_encoder = TextEncoder(inter_dim=inter_dim, config=text_config)
-        self.style_encoder = CoarseStyleEncoder(
+        self.style_encoder = TextStyleEncoder(
             inter_dim,
             style_dim,
             config=style_config,

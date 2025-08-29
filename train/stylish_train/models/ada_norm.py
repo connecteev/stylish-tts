@@ -8,66 +8,6 @@ from .common import InstanceNorm1d, get_padding, init_weights
 from .text_encoder import sequence_mask
 
 
-class AdaptiveInstanceFine(nn.Module):
-    def __init__(self, style_dim, num_features):
-        super().__init__()
-        self.norm = nn.InstanceNorm1d(num_features, affine=False)
-        self.fc = nn.Linear(style_dim, num_features * 2)
-        self.num_features = num_features
-
-    def forward(self, x, s):
-        s = rearrange(s, "b s t -> b t s")
-        h = self.fc(s)
-        h = rearrange(h, "b t s -> b s t")
-        gamma = h[:, : self.num_features, :]
-        beta = h[:, self.num_features :, :]
-        return (1 + gamma) * self.norm(x) + beta
-
-
-class AdaDecoderBlock(nn.Module):
-    def __init__(
-        self,
-        *,
-        dim_in,
-        dim_out,
-        style_dim,
-        actv=nn.LeakyReLU(0.2),
-        dropout_p=0.0,
-    ):
-        super().__init__()
-        self.actv = actv
-        self.learned_sc = dim_in != dim_out
-        self._build_weights(dim_in, dim_out, style_dim)
-        self.dropout = nn.Dropout(dropout_p)
-
-    def _build_weights(self, dim_in, dim_out, style_dim):
-        self.conv1 = weight_norm(nn.Conv1d(dim_in, dim_out, 3, 1, 1))
-        self.conv2 = weight_norm(nn.Conv1d(dim_out, dim_out, 3, 1, 1))
-        self.norm1 = AdaptiveInstanceFine(style_dim, dim_in)
-        self.norm2 = AdaptiveInstanceFine(style_dim, dim_out)
-        if self.learned_sc:
-            self.conv1x1 = weight_norm(nn.Conv1d(dim_in, dim_out, 1, 1, 0, bias=False))
-
-    def _shortcut(self, x):
-        if self.learned_sc:
-            x = self.conv1x1(x)
-        return x
-
-    def _residual(self, x, s):
-        x = self.norm1(x, s)
-        x = self.actv(x)
-        x = self.conv1(self.dropout(x))
-        x = self.norm2(x, s)
-        x = self.actv(x)
-        x = self.conv2(self.dropout(x))
-        return x
-
-    def forward(self, x, s):
-        out = self._residual(x, s)
-        out = (out + self._shortcut(x)) / math.sqrt(2)
-        return out
-
-
 class AdaptiveGeneratorBlock(torch.nn.Module):
     def __init__(self, channels, kernel_size=3, dilation=(1, 3, 5), style_dim=64):
         super(AdaptiveGeneratorBlock, self).__init__()
@@ -145,17 +85,17 @@ class AdaptiveGeneratorBlock(torch.nn.Module):
 
         self.adain1 = nn.ModuleList(
             [
-                AdaptiveInstanceFine(style_dim, channels),
-                AdaptiveInstanceFine(style_dim, channels),
-                AdaptiveInstanceFine(style_dim, channels),
+                AdaptiveInstance(style_dim, channels),
+                AdaptiveInstance(style_dim, channels),
+                AdaptiveInstance(style_dim, channels),
             ]
         )
 
         self.adain2 = nn.ModuleList(
             [
-                AdaptiveInstanceFine(style_dim, channels),
-                AdaptiveInstanceFine(style_dim, channels),
-                AdaptiveInstanceFine(style_dim, channels),
+                AdaptiveInstance(style_dim, channels),
+                AdaptiveInstance(style_dim, channels),
+                AdaptiveInstance(style_dim, channels),
             ]
         )
 
@@ -186,7 +126,7 @@ class AdaptiveGeneratorBlock(torch.nn.Module):
             remove_weight_norm(l)
 
 
-class AdaptiveInstanceCoarse(nn.Module):
+class AdaptiveInstance(nn.Module):
     def __init__(self, style_dim, num_features):
         super().__init__()
         self.norm = nn.InstanceNorm1d(num_features, affine=False)
@@ -199,7 +139,7 @@ class AdaptiveInstanceCoarse(nn.Module):
         return (1 + gamma) * self.norm(x) + beta
 
 
-class AdaptivePitchBlock(nn.Module):
+class AdaptiveDecoderBlock(nn.Module):
     def __init__(
         self,
         dim_in,
@@ -217,8 +157,8 @@ class AdaptivePitchBlock(nn.Module):
     def _build_weights(self, dim_in, dim_out, style_dim):
         self.conv1 = weight_norm(nn.Conv1d(dim_in, dim_out, 3, 1, 1))
         self.conv2 = weight_norm(nn.Conv1d(dim_out, dim_out, 3, 1, 1))
-        self.norm1 = AdaptiveInstanceCoarse(style_dim, dim_in)
-        self.norm2 = AdaptiveInstanceCoarse(style_dim, dim_out)
+        self.norm1 = AdaptiveInstance(style_dim, dim_in)
+        self.norm2 = AdaptiveInstance(style_dim, dim_out)
         if self.learned_sc:
             self.conv1x1 = weight_norm(nn.Conv1d(dim_in, dim_out, 1, 1, 0, bias=False))
 
