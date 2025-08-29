@@ -40,7 +40,9 @@ class Decoder(torch.nn.Module):
             torch.nn.Conv1d(1, 1, kernel_size=3, stride=1, groups=1, padding=1)
         )
 
-        self.asr_res = weight_norm(torch.nn.Conv1d(dim_in, residual_dim, kernel_size=1))
+        self.asr_res = torch.nn.Sequential(
+            weight_norm(torch.nn.Conv1d(dim_in, residual_dim, kernel_size=1))
+        )
 
     def forward(self, asr, F0_curve, N, s):
         F0 = self.F0_conv(F0_curve.unsqueeze(1))

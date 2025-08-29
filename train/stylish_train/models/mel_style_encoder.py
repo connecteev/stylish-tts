@@ -117,7 +117,7 @@ class ResBlk(torch.nn.Module):
         return x / math.sqrt(2)  # unit variance
 
 
-class StyleEncoder(torch.nn.Module):
+class MelStyleEncoder(torch.nn.Module):
     def __init__(
         self, dim_in=48, style_dim=48, max_conv_dim=384, skip_downsamples=False
     ):

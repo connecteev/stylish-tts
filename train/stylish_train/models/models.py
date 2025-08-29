@@ -3,9 +3,7 @@ from stylish_lib.config_loader import ModelConfig
 
 from .text_aligner import tdnn_blstm_ctc_model_base
 
-from .discriminators.multi_period import MultiPeriodDiscriminator
-from .discriminators.multi_resolution import MultiResolutionDiscriminator
-from .discriminators.multi_subband import MultiScaleSubbandCQTDiscriminator
+from .discriminator import MultiResolutionDiscriminator
 
 from .duration_predictor import DurationPredictor
 from .pitch_energy_predictor import PitchEnergyPredictor
@@ -54,8 +52,6 @@ def build_model(model_config: ModelConfig):
         duration_predictor=duration_predictor,
         pitch_energy_predictor=pitch_energy_predictor,
         speech_predictor=SpeechPredictor(model_config),
-        mpd=MultiPeriodDiscriminator(),
-        msbd=MultiScaleSubbandCQTDiscriminator(sample_rate=model_config.sample_rate),
         mrd=MultiResolutionDiscriminator(),
         pe_text_encoder=pe_text_encoder,
         pe_text_style_encoder=pe_text_style_encoder,
