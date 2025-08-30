@@ -72,6 +72,10 @@ class TrainingPlanConfig(BaseModel):
         default_factory=TrainingStageConfig,
         description="Configuration for training of style models stage.",
     )
+    joint: TrainingStageConfig = Field(
+        default_factory=TrainingStageConfig,
+        description="Configuration for joint training of inference models.",
+    )
 
     def get_stage(self, name: str) -> TrainingStageConfig:
         try:
