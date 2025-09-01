@@ -2,7 +2,7 @@ import gc
 import traceback
 import torch
 from typing import Optional, Dict, List
-from meldataset import (
+from dataloader import (
     FilePathDataset,
     build_dataloader,
     get_frame_count,

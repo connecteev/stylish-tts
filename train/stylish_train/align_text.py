@@ -18,7 +18,7 @@ from models.text_aligner import tdnn_blstm_ctc_model_base
 from stylish_lib.config_loader import load_config_yaml, load_model_config_yaml
 from stylish_lib.text_utils import TextCleaner
 from utils import get_data_path_list, maximum_path
-from meldataset import get_frame_count, get_time_bin
+from dataloader import get_frame_count, get_time_bin
 
 logging.basicConfig(
     level=logging.INFO,

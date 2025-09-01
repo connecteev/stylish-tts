@@ -124,5 +124,13 @@ class TrainContext:
             sample_rate=self.model_config.sample_rate,
         ).to(self.config.training.device)
 
+        self.to_align_mel = torchaudio.transforms.MelSpectrogram(
+            n_mels=80,  # align seems to perform worse on higher n_mels
+            n_fft=self.model_config.n_fft,
+            win_length=self.model_config.win_length,
+            hop_length=self.model_config.hop_length,
+            sample_rate=self.model_config.sample_rate,
+        ).to(self.config.training.device)
+
     def reset_out_dir(self, stage_name):
         self.out_dir = osp.join(self.base_output_dir, stage_name)

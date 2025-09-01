@@ -1,4 +1,3 @@
-# coding: utf-8
 import random
 import os.path as osp
 import numpy as np
@@ -62,37 +61,10 @@ class FilePathDataset(torch.utils.data.Dataset):
         self.text_cleaner = text_cleaner
 
         self.model_config = model_config
-
-        self.to_align_mel = torchaudio.transforms.MelSpectrogram(
-            n_mels=80,  # align seems to perform worse on higher n_mels
-            n_fft=model_config.n_fft,
-            win_length=model_config.win_length,
-            hop_length=model_config.hop_length,
-            sample_rate=model_config.sample_rate,
-        )
-
-        self.to_mel = torchaudio.transforms.MelSpectrogram(
-            n_mels=model_config.n_mels,
-            n_fft=model_config.n_fft,
-            win_length=model_config.win_length,
-            hop_length=model_config.hop_length,
-            sample_rate=model_config.sample_rate,
-        )
-
         self.root_path = root_path
         self.multispeaker = model_config.multispeaker
         self.sample_rate = model_config.sample_rate
         self.hop_length = model_config.hop_length
-
-    def preprocess(self, wave, align=False):
-        mean, std = -4, 4
-        wave_tensor = wave
-        if align:
-            mel_tensor = self.to_align_mel(wave_tensor)
-        else:
-            mel_tensor = self.to_mel(wave_tensor)
-        mel_tensor = (torch.log(1e-5 + mel_tensor.unsqueeze(0)) - mean) / std
-        return mel_tensor
 
     def time_bins(self):
         sample_lengths = []
@@ -154,28 +126,7 @@ class FilePathDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         data = self.data_list[idx]
         path = data[0]
-        wave, text_tensor, speaker_id, mel_tensor, align_mel = self._load_tensor(data)
-
-        acoustic_feature = mel_tensor.squeeze()
-        length_feature = acoustic_feature.size(1)
-        acoustic_feature = acoustic_feature[:, : (length_feature - length_feature % 2)]
-        align_mel = align_mel[:, : (length_feature - length_feature % 2)]
-
-        # get reference sample
-        if self.multispeaker:
-            # TODO: Multispeaker
-            exit("Multispeaker not implemented")
-            # ref_data = (
-            #     (self.df[self.df[2] == str(speaker_id)]).sample(n=1).iloc[0].tolist()
-            # )
-            # ref_mel_tensor, ref_label = self._load_data(ref_data[:3])
-        else:
-            ref_data = []
-            ref_mel_tensor, ref_label = None, ""
-
-        # get OOD text
-
-        ref_text = torch.LongTensor()
+        wave, text_tensor, speaker_id = self._load_tensor(data)
 
         pitch = None
         if path in self.pitch:
@@ -193,15 +144,10 @@ class FilePathDataset(torch.utils.data.Dataset):
 
         return (
             speaker_id,
-            acoustic_feature,
             text_tensor,
-            ref_text,
-            ref_mel_tensor,
-            ref_label,
             path,
             wave,
             pitch,
-            align_mel,
             alignment,
         )
 
@@ -233,21 +179,7 @@ class FilePathDataset(torch.utils.data.Dataset):
         text.append(0)
         text = torch.LongTensor(text)
 
-        mel_tensor = self.preprocess(wave, align=False).squeeze()
-        align_mel = self.preprocess(wave, align=True).squeeze()
-
-        return (wave, text, speaker_id, mel_tensor, align_mel)
-
-    def _load_data(self, data):
-        max_mel_length = 192
-        wave, text_tensor, speaker_id, mel_tensor = self._load_tensor(data)
-
-        mel_length = mel_tensor.size(1)
-        if mel_length > max_mel_length:
-            random_start = np.random.randint(0, mel_length - max_mel_length)
-            mel_tensor = mel_tensor[:, random_start : random_start + max_mel_length]
-
-        return mel_tensor, speaker_id
+        return (wave, text, speaker_id)
 
 
 class Collater(object):
@@ -257,75 +189,45 @@ class Collater(object):
     """
 
     def __init__(self, return_wave=False, multispeaker=False, *, train):
-        self.text_pad_index = 0
-        self.min_mel_length = 192
-        self.max_mel_length = 192
         self.return_wave = return_wave
         self.multispeaker = multispeaker
         self.train = train
+        self.hop_length = train.model_config.hop_length
 
     def __call__(self, batch):
         batch_size = len(batch)
 
-        # sort by mel length
-        lengths = [b[1].shape[1] for b in batch]
-        batch_indexes = np.argsort(lengths)[::-1]
-        batch = [batch[bid] for bid in batch_indexes]
+        max_text_length = max([b[1].shape[0] for b in batch])
 
-        nmels = batch[0][1].size(0)
-        max_mel_length = max([b[1].shape[1] for b in batch])
-        max_text_length = max([b[2].shape[0] for b in batch])
-        max_rtext_length = max([b[3].shape[0] for b in batch])
-
-        labels = torch.zeros((batch_size)).long()
-        mels = torch.zeros((batch_size, nmels, max_mel_length)).float()
+        speaker_out = torch.zeros((batch_size)).long()
         texts = torch.zeros((batch_size, max_text_length)).long()
-        ref_texts = torch.zeros((batch_size, max_rtext_length)).long()
-
-        input_lengths = torch.zeros(batch_size).long()
-        ref_lengths = torch.zeros(batch_size).long()
-        output_lengths = torch.zeros(batch_size).long()
-        ref_mels = torch.zeros((batch_size, nmels, self.max_mel_length)).float()
-        ref_labels = torch.zeros((batch_size)).long()
+        text_lengths = torch.zeros(batch_size).long()
         paths = ["" for _ in range(batch_size)]
-        waves = torch.zeros((batch_size, batch[0][7].shape[-1])).float()
+        waves = torch.zeros((batch_size, batch[0][3].shape[-1])).float()
         pitches = torch.zeros((batch_size, max_mel_length)).float()
-        align_mels = torch.zeros((batch_size, 80, max_mel_length)).float()
         alignments = torch.zeros((batch_size, max_text_length, max_mel_length))
         # alignments = torch.zeros((batch_size, max_text_length, max_mel_length // 2))
 
         for bid, (
-            label,
-            mel,
+            speaker,
             text,
-            ref_text,
-            ref_mel,
-            ref_label,
             path,
             wave,
             pitch,
             align_mel,
             duration,
         ) in enumerate(batch):
-            mel_size = mel.size(1)
+            speaker_out[bid] = speaker
+
             text_size = text.size(0)
-            rtext_size = ref_text.size(0)
-            labels[bid] = label
-            mels[bid, :, :mel_size] = mel
             texts[bid, :text_size] = text
-            ref_texts[bid, :rtext_size] = ref_text
-            input_lengths[bid] = text_size
-            ref_lengths[bid] = rtext_size
-            output_lengths[bid] = mel_size
+
+            text_lengths[bid] = text_size
             paths[bid] = path
-            if self.multispeaker:
-                ref_mel_size = ref_mel.size(1)
-                ref_mels[bid, :, :ref_mel_size] = ref_mel
-                ref_labels[bid] = ref_label
             waves[bid] = wave
+            # TDDO check for alignment stage and fail hard if not in alignment stage
             if pitch is not None:
                 pitches[bid] = pitch
-            align_mels[bid, :, :mel_size] = align_mel
 
             # alignments[bid, :text_size, : mel_size // 2] = duration
             pred_dur = duration[0]
@@ -339,21 +241,19 @@ class Collater(object):
                         pred_dur[i] -= 1
                         pred_dur[i + 1] += 1
             alignment = self.train.duration_processor.duration_to_alignment(pred_dur)
+            mel_size = wave.shape[-1] // self.hop_length
             if alignment.shape[1] == mel_size:
                 alignments[bid, :text_size, :mel_size] = alignment
+            # TODO: Add a hard failure here if not in alignment stage
+            # else:
+            #     exit(f"alignment for {path} did not match audio length")
 
         result = (
             waves,
             texts,
-            input_lengths,
-            ref_texts,
-            ref_lengths,
-            mels,
-            output_lengths,
-            ref_mels,
+            text_lengths,
             paths,
             pitches,
-            align_mels,
             alignments,
         )
         return result

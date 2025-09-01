@@ -11,7 +11,7 @@ import hashlib
 import numpy as np
 from safetensors.torch import save_file
 
-from meldataset import build_dataloader, FilePathDataset
+from dataloader import build_dataloader, FilePathDataset
 from batch_manager import BatchManager
 from stage import Stage, is_valid_stage, valid_stage_list
 

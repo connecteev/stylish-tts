@@ -301,14 +301,8 @@ batch_names = [
     "audio_gt",
     "text",
     "text_length",
-    "ref_text",
-    "ref_length",
-    "mel",
-    "mel_length",
-    "ref_mel",
     "path",
     "pitch",
-    "align_mel",
     "alignment",
 ]
 
