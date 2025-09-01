@@ -160,7 +160,7 @@ class Stage:
                 logs.append(next_log)
                 samples = [
                     (i, sample_map[item])
-                    for i, item in enumerate(inputs[8])
+                    for i, item in enumerate(inputs[3])
                     if item in sample_map
                 ]
 
@@ -280,7 +280,7 @@ class Stage:
                         progress_bar.set_postfix({"loss": f"{interim.total():.3f}"})
 
             except Exception as e:
-                path = inputs[8]
+                path = inputs[3]
                 progress_bar.clear() if progress_bar is not None else None
                 train.logger.error(f"Validation failed {path}: {e}")
                 traceback.print_exc()
