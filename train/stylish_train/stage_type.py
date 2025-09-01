@@ -111,6 +111,7 @@ stages["alignment"] = StageType(
     inputs=[
         "text",
         "text_length",
+        "audio_gt",
     ],
 )
 
@@ -617,7 +618,7 @@ def calculate_mel(audio, to_mel):
     mel = to_mel(audio)
     mel = (torch.log(1e-5 + mel) - mean) / std
     # STFT returns audio_len // hop_len + 1, so we strip off the extra here
-    mel[:, : (mel.length - mel.length % 2)]
+    mel = mel[:, :, : (mel.shape[-1] - mel.shape[-1] % 2)]
     mel_length = torch.full(
         [audio.shape[0]], mel.shape[2], dtype=torch.long, device=audio.device
     )

@@ -160,7 +160,7 @@ def main(
     )
     train.val_dataloader = train.accelerator.prepare(train.val_dataloader)
     train.duration_loss = DurationLoss(
-        class_count=train.model_config.duration_predictor.max_dur,
+        class_count=train.model_config.duration_predictor.duration_classes,
         weight=val_dataset.duration_weights,
     ).to(train.config.training.device)
 

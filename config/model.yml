@@ -22,6 +22,7 @@ generator:
   resblock_kernel_sizes: [ 3, 7, 11 ]
   upsample_rates: [ 4, 5 ]
   upsample_initial_channel: 512
+  upsample_last_channel: 128
   resblock_dilation_sizes: [ [ 1, 3, 5 ], [ 1, 3, 5 ], [ 1, 3, 5 ] ]
   upsample_kernel_sizes: [ 8, 10 ]
   gen_istft_n_fft: 60
@@ -40,12 +41,19 @@ text_encoder:
 style_encoder:
   layers: 2
 
+mel_style_encoder:
+  max_channels: 384
+  skip_downsample: True
+
 duration_predictor:
   n_layer: 4
-  max_dur: 16
+  duration_classes: 16
+  max_duration: 50
   dropout: 0.2
+  last_dropout: 0.5
 
 pitch_energy_predictor:
+  inter_dim: 512
   dropout: 0.2
 
 # speech language model config

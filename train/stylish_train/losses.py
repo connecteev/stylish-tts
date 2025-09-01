@@ -71,7 +71,6 @@ class DiscriminatorLoss(torch.nn.Module):
         super(DiscriminatorLoss, self).__init__()
         self.discriminators = torch.nn.ModuleDict(
             {
-                # TODO Remove hard-coded value
                 "mrd": DiscriminatorLossHelper(mrd, multi_spectrogram_count),
             }
         )

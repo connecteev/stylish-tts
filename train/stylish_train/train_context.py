@@ -111,10 +111,10 @@ class TrainContext:
         self.duration_loss: DurationLoss = None
 
         self.text_cleaner = TextCleaner(self.model_config.symbol)
-        # TODO: Fix hardcoded value
-        self.duration_processor = DurationProcessor(class_count=16, max_dur=50).to(
-            self.config.training.device
-        )
+        self.duration_processor = DurationProcessor(
+            class_count=self.model_config.duration_predictor.duration_classes,
+            max_dur=self.model_config.duration_predictor.max_duration,
+        ).to(self.config.training.device)
 
         self.to_mel = torchaudio.transforms.MelSpectrogram(
             n_mels=self.model_config.n_mels,

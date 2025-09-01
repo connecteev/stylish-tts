@@ -180,6 +180,9 @@ class RingformerGeneratorConfig(BaseModel):
     upsample_initial_channel: int = Field(
         ..., description="Initial channel count for upsampling."
     )
+    upsample_last_channel: int = Field(
+        ..., description="Last channel count before istft"
+    )
     resblock_dilation_sizes: List[List[int]] = Field(
         ..., description="Dilation sizes for residual blocks."
     )
@@ -218,6 +221,19 @@ class TextEncoderConfig(BaseModel):
     dropout: float = Field(..., description="Dropout for internal layers")
 
 
+class MelStyleEncoderConfig(BaseModel):
+    """
+    Style encoder configuration parameters.
+    """
+
+    max_channels: int = Field(
+        ..., description="Maximum number of channels during downsampling"
+    )
+    skip_downsample: bool = Field(
+        ..., description="Skip one of the downsample layers to allow smaller mel length"
+    )
+
+
 class StyleEncoderConfig(BaseModel):
     """
     Style encoder configuration parameters.
@@ -232,8 +248,14 @@ class DurationPredictorConfig(BaseModel):
     """
 
     n_layer: int = Field(..., description="Number of layers in the prosody predictor.")
-    max_dur: int = Field(..., description="Maximum duration of a single phoneme.")
+    duration_classes: int = Field(
+        ..., description="Number of classes used to predict duration."
+    )
+    max_duration: int = Field(..., description="Maximum duration of a single phoneme.")
     dropout: float = Field(..., description="Dropout rate for the prosody predictor.")
+    last_dropout: float = Field(
+        ..., description="Dropout rate just before final linear layer."
+    )
 
 
 class PitchEnergyPredictorConfig(BaseModel):
@@ -241,7 +263,12 @@ class PitchEnergyPredictorConfig(BaseModel):
     Prosody predictor configuration parameters.
     """
 
-    dropout: float = Field(..., description="Dropout rate for the prosody predictor.")
+    inter_dim: int = Field(
+        ..., description="Interchange dimension for pitch-energy prediction"
+    )
+    dropout: float = Field(
+        ..., description="Dropout rate for the pitch-energy predictor."
+    )
 
 
 class SlmConfig(BaseModel):
@@ -304,6 +331,9 @@ class ModelConfig(BaseModel):
     )
     text_encoder: TextEncoderConfig = Field(
         ..., description="Text encoder configuration parameters."
+    )
+    mel_style_encoder: MelStyleEncoderConfig = Field(
+        ..., description="Acoustic style encoder configuration parameters."
     )
     style_encoder: StyleEncoderConfig = Field(
         ..., description="Style encoder configuration parameters."

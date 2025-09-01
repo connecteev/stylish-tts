@@ -198,15 +198,16 @@ class Collater(object):
         batch_size = len(batch)
 
         max_text_length = max([b[1].shape[0] for b in batch])
+        mel_length = batch[0][3].shape[-1] // self.hop_length
 
         speaker_out = torch.zeros((batch_size)).long()
         texts = torch.zeros((batch_size, max_text_length)).long()
         text_lengths = torch.zeros(batch_size).long()
         paths = ["" for _ in range(batch_size)]
         waves = torch.zeros((batch_size, batch[0][3].shape[-1])).float()
-        pitches = torch.zeros((batch_size, max_mel_length)).float()
-        alignments = torch.zeros((batch_size, max_text_length, max_mel_length))
-        # alignments = torch.zeros((batch_size, max_text_length, max_mel_length // 2))
+        pitches = torch.zeros((batch_size, mel_length)).float()
+        alignments = torch.zeros((batch_size, max_text_length, mel_length))
+        # alignments = torch.zeros((batch_size, max_text_length, mel_length // 2))
 
         for bid, (
             speaker,
@@ -214,7 +215,6 @@ class Collater(object):
             path,
             wave,
             pitch,
-            align_mel,
             duration,
         ) in enumerate(batch):
             speaker_out[bid] = speaker
@@ -229,7 +229,7 @@ class Collater(object):
             if pitch is not None:
                 pitches[bid] = pitch
 
-            # alignments[bid, :text_size, : mel_size // 2] = duration
+            # alignments[bid, :text_size, : mel_length // 2] = duration
             pred_dur = duration[0]
             for i in range(pred_dur.shape[0] - 1):
                 if pred_dur[i] > 1 and pred_dur[i + 1] > 1:
@@ -241,9 +241,8 @@ class Collater(object):
                         pred_dur[i] -= 1
                         pred_dur[i + 1] += 1
             alignment = self.train.duration_processor.duration_to_alignment(pred_dur)
-            mel_size = wave.shape[-1] // self.hop_length
-            if alignment.shape[1] == mel_size:
-                alignments[bid, :text_size, :mel_size] = alignment
+            if alignment.shape[1] == mel_length:
+                alignments[bid, :text_size, :mel_length] = alignment
             # TODO: Add a hard failure here if not in alignment stage
             # else:
             #     exit(f"alignment for {path} did not match audio length")

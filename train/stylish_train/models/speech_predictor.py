@@ -34,6 +34,7 @@ class SpeechPredictor(torch.nn.Module):
             resblock_kernel_sizes=model_config.generator.resblock_kernel_sizes,
             upsample_rates=model_config.generator.upsample_rates,
             upsample_initial_channel=model_config.generator.upsample_initial_channel,
+            upsample_last_channel=model_config.generator.upsample_last_channel,
             resblock_dilation_sizes=model_config.generator.resblock_dilation_sizes,
             upsample_kernel_sizes=model_config.generator.upsample_kernel_sizes,
             gen_istft_n_fft=model_config.generator.gen_istft_n_fft,

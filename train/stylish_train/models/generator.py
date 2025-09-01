@@ -20,17 +20,13 @@ import numpy as np
 
 
 class TorchSTFT(torch.nn.Module):
-    def __init__(
-        self, device, filter_length=800, hop_length=200, win_length=800, window="hann"
-    ):
+    def __init__(self, filter_length=800, hop_length=200, win_length=800):
         super().__init__()
         self.filter_length = filter_length
         self.hop_length = hop_length
         self.win_length = win_length
-        self.device = device
-        self.window = torch.from_numpy(
-            get_window(window, win_length, fftbins=True).astype(np.float32)
-        ).to(device)
+        window = torch.hann_window(win_length)
+        self.register_buffer("window", window)
 
     def transform(self, input_data):
         forward_transform = torch.stft(
@@ -72,6 +68,7 @@ class Generator(torch.nn.Module):
         resblock_kernel_sizes,
         upsample_rates,
         upsample_initial_channel,
+        upsample_last_channel,
         resblock_dilation_sizes,
         upsample_kernel_sizes,
         gen_istft_n_fft,
@@ -166,7 +163,9 @@ class Generator(torch.nn.Module):
 
         self.conformers = nn.ModuleList()
         self.post_n_fft = self.gen_istft_n_fft
-        self.conv_post = weight_norm(Conv1d(128, self.post_n_fft + 2, 7, 1, padding=3))
+        self.conv_post = weight_norm(
+            Conv1d(upsample_last_channel, self.post_n_fft + 2, 7, 1, padding=3)
+        )
         for i in range(len(self.ups)):
             ch = upsample_initial_channel // (2**i)
             self.conformers.append(
@@ -188,8 +187,6 @@ class Generator(torch.nn.Module):
         self.conv_post.apply(init_weights)
         self.reflection_pad = torch.nn.ReflectionPad1d((1, 0))
         self.stft = TorchSTFT(
-            # TODO: Fix hardcoded device
-            device="cuda",
             filter_length=self.gen_istft_n_fft,
             hop_length=self.gen_istft_hop_size,
             win_length=self.gen_istft_n_fft,
