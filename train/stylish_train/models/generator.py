@@ -26,7 +26,7 @@ class TorchSTFT(torch.nn.Module):
         self.hop_length = hop_length
         self.win_length = win_length
         window = torch.hann_window(win_length)
-        self.register_buffer("window", window)
+        self.register_buffer("window", window, persistent=False)
 
     def transform(self, input_data):
         forward_transform = torch.stft(
