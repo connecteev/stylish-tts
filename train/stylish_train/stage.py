@@ -197,11 +197,8 @@ class Stage:
                             )
                             if self.name != "duration":
                                 # write mel
-                                audio_pred_cpu = (
-                                    audio_out[inputs_index].squeeze(0).cpu().float()
-                                )
-                                to_mel_cpu = train.to_mel.to("cpu")
-                                mel_pred_tensor = to_mel_cpu(audio_pred_cpu)
+                                audio_pred = audio_out[inputs_index].squeeze(0).float()
+                                mel_pred_tensor = train.to_mel(audio_pred).cpu()
                                 mel_pred_log = torch.log(
                                     torch.clamp(mel_pred_tensor, min=1e-5)
                                 )
@@ -229,7 +226,11 @@ class Stage:
                             )
                             if self.name != "duration":
                                 try:
-                                    mel_gt_np = batch.mel[inputs_index].cpu().numpy()
+                                    mel_gt_np = (
+                                        train.to_mel(audio_gt[inputs_index])
+                                        .cpu()
+                                        .numpy()
+                                    )
                                     fig_mel_gt = plot_spectrogram_to_figure(
                                         mel_gt_np, title="GT Mel"
                                     )
