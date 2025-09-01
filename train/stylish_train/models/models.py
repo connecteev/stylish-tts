@@ -13,6 +13,7 @@ from .text_style_encoder import TextStyleEncoder
 from .mel_style_encoder import MelStyleEncoder
 from .pitch_energy_predictor import PitchEnergyPredictor
 from .speech_predictor import SpeechPredictor
+from multi_spectrogram import multi_spectrogram_count
 
 from munch import Munch
 
@@ -52,7 +53,7 @@ def build_model(model_config: ModelConfig):
         duration_predictor=duration_predictor,
         pitch_energy_predictor=pitch_energy_predictor,
         speech_predictor=SpeechPredictor(model_config),
-        mrd=MultiResolutionDiscriminator(),
+        mrd=MultiResolutionDiscriminator(discriminator_count=multi_spectrogram_count),
         pe_text_encoder=pe_text_encoder,
         pe_text_style_encoder=pe_text_style_encoder,
         pe_mel_style_encoder=pe_mel_style_encoder,

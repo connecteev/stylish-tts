@@ -19,6 +19,7 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from stylish_lib.text_utils import TextCleaner
 import torchaudio
 from utils import DurationProcessor
+from multi_spectrogram import MultiSpectrogram
 
 
 class Manifest:
@@ -89,6 +90,9 @@ class TrainContext:
         self.logger: logging.Logger = logger
 
         # Losses
+        self.multi_spectrogram = MultiSpectrogram(
+            sample_rate=self.model_config.sample_rate
+        ).to(self.config.training.device)
         self.generator_loss: Optional[GeneratorLoss] = None  # Generator Loss
         self.discriminator_loss: Optional[DiscriminatorLoss] = (
             None  # Discriminator Loss

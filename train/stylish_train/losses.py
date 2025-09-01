@@ -8,98 +8,7 @@ from transformers import AutoModel
 import numpy as np
 import k2
 from einops import rearrange
-
-
-class SpectralConvergenceLoss(torch.nn.Module):
-    """Spectral convergence loss module."""
-
-    def __init__(self):
-        """Initilize spectral convergence loss module."""
-        super(SpectralConvergenceLoss, self).__init__()
-
-    def forward(self, x_mag, y_mag):
-        """Calculate forward propagation.
-        Args:
-            x_mag (Tensor): Magnitude spectrogram of predicted signal (B, #frames, #freq_bins).
-            y_mag (Tensor): Magnitude spectrogram of groundtruth signal (B, #frames, #freq_bins).
-        Returns:
-            Tensor: Spectral convergence loss value.
-        """
-        return torch.norm(y_mag - x_mag, p=1) / torch.norm(y_mag, p=1)
-
-
-class STFTLoss(torch.nn.Module):
-    """STFT loss module."""
-
-    def __init__(
-        self,
-        *,
-        fft_size,
-        shift_size,
-        win_length,
-        window,
-        n_mels,
-        sample_rate,
-    ):
-        """Initialize STFT loss module."""
-        super(STFTLoss, self).__init__()
-        self.fft_size = fft_size
-        self.shift_size = shift_size
-        self.win_length = win_length
-        self.to_mel = torchaudio.transforms.MelSpectrogram(
-            n_mels=n_mels,
-            sample_rate=sample_rate,
-            n_fft=fft_size,
-            win_length=win_length,
-            hop_length=shift_size,
-            window_fn=window,
-        )
-
-        self.spectral_convergence_loss = SpectralConvergenceLoss()
-
-    def forward(self, x, y):
-        """Calculate forward propagation.
-        Args:
-            x (Tensor): Predicted signal (B, T).
-            y (Tensor): Groundtruth signal (B, T).
-        Returns:
-            Tensor: Spectral convergence loss value.
-            Tensor: Log STFT magnitude loss value.
-        """
-        x_mag = self.to_mel(x)
-        # mean, std = -4, 4
-        # x_mag = (torch.log(1e-5 + x_mag) - mean) / std
-        x_mag = torch.pow(x_mag, 0.33)
-
-        y_mag = self.to_mel(y)
-        # mean, std = -4, 4
-        # y_mag = (torch.log(1e-5 + y_mag) - mean) / std
-        y_mag = torch.pow(y_mag, 0.33)
-
-        sc_loss = self.spectral_convergence_loss(x_mag, y_mag)
-        # sc_loss = F.smooth_l1_loss(x_mag, y_mag)
-        return sc_loss
-
-
-class Resolution:
-    def __init__(self, *, fft, hop, window, mels):
-        self.fft = fft
-        self.hop = hop
-        self.window = window
-        self.mels = mels
-
-
-resolutions = [
-    Resolution(fft=2048, hop=24, window=67, mels=120),
-    Resolution(fft=2048, hop=24, window=127, mels=120),
-    Resolution(fft=2048, hop=24, window=257, mels=120),
-    Resolution(fft=2048, hop=24, window=509, mels=120),
-    Resolution(fft=2048, hop=24, window=1021, mels=120),
-    Resolution(fft=2048, hop=24, window=2048, mels=120),
-    # Resolution(fft=1024, hop=120, window=600, mels=128),
-    # Resolution(fft=2048, hop=240, window=1200, mels=128),
-    # Resolution(fft=512, hop=50, window=240, mels=128),
-]
+from multi_spectrogram import multi_spectrogram_count
 
 
 class MultiResolutionSTFTLoss(torch.nn.Module):
@@ -108,48 +17,22 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
     def __init__(
         self,
         *,
-        resolution_list=resolutions,
-        window=torch.hann_window,
         sample_rate,
     ):
-        """Initialize Multi resolution STFT loss module.
-        Args:
-            fft_sizes (list): List of FFT sizes.
-            hop_sizes (list): List of hop sizes.
-            win_lengths (list): List of window lengths.
-            window (str): Window function type.
-        """
         super(MultiResolutionSTFTLoss, self).__init__()
-        self.stft_losses = torch.nn.ModuleList()
-        for item in resolution_list:
-            self.stft_losses += [
-                STFTLoss(
-                    fft_size=item.fft,
-                    shift_size=item.hop,
-                    win_length=item.window,
-                    window=window,
-                    sample_rate=sample_rate,
-                    n_mels=item.mels,
-                )
-            ]
 
-    def forward(self, x, y, log):
-        """Calculate forward propagation.
-        Args:
-            x (Tensor): Predicted signal (B, T).
-            y (Tensor): Groundtruth signal (B, T).
-        Returns:
-            Tensor: Multi resolution spectral convergence loss value.
-            Tensor: Multi resolution log STFT magnitude loss value.
-        """
-        sc_loss = 0.0
-        for f in self.stft_losses:
-            sc_loss += f(x, y)
-        sc_loss /= len(self.stft_losses)
+    def spectral_convergence_loss(self, target, pred):
+        return torch.norm(target - pred, p=1) / (torch.norm(target, p=1) + 1e-6)
 
-        log.add_loss("mel", sc_loss)
+    def forward(self, *, target_list, pred_list, log):
+        loss = 0.0
+        for target, pred in zip(target_list, pred_list):
+            loss += self.spectral_convergence_loss(target, pred)
+        loss /= len(target_list)
 
-        return sc_loss
+        log.add_loss("mel", loss)
+
+        return loss
 
 
 class MagPhaseLoss(torch.nn.Module):
@@ -188,17 +71,20 @@ class DiscriminatorLoss(torch.nn.Module):
         super(DiscriminatorLoss, self).__init__()
         self.discriminators = torch.nn.ModuleDict(
             {
-                "mrd": DiscriminatorLossHelper(mrd, 3),
+                # TODO Remove hard-coded value
+                "mrd": DiscriminatorLossHelper(mrd, multi_spectrogram_count),
             }
         )
 
     def get_disc_lr_multiplier(self, key):
         return self.discriminators[key].get_disc_lr_multiplier()
 
-    def forward(self, audio_gt, audio, used):
+    def forward(self, *, target_list, pred_list, used):
         loss = 0
         for key in used:
-            loss += self.discriminators[key](audio_gt, audio)
+            loss += self.discriminators[key](
+                target_list=target_list, pred_list=pred_list
+            )
         return loss.mean()
 
     def state_dict(self, *args, **kwargs):
@@ -269,8 +155,10 @@ class DiscriminatorLossHelper(torch.nn.Module):
             loss += tau - F.relu(tau - l_rel)
         return loss
 
-    def forward(self, audio_gt, audio):
-        real_score, gen_score, _, _ = self.model(audio_gt, audio)
+    def forward(self, *, target_list, pred_list):
+        real_score, gen_score, _, _ = self.model(
+            target_list=target_list, pred_list=pred_list
+        )
         disc = self.discriminator_loss(real_score, gen_score)
         tprls = self.tprls_loss(real_score, gen_score)
         self.last_loss = self.last_loss * 0.95 + disc.item() * 0.05
@@ -286,10 +174,10 @@ class GeneratorLoss(torch.nn.Module):
             }
         )
 
-    def forward(self, audio_gt, audio, used):
+    def forward(self, *, target_list, pred_list, used):
         loss = 0
         for key in used:
-            loss += self.generators[key](audio_gt, audio)
+            loss += self.generators[key](target_list=target_list, pred_list=pred_list)
         return loss.mean()
 
 
@@ -326,8 +214,10 @@ class GeneratorLossHelper(torch.nn.Module):
             loss += tau - F.relu(tau - L_rel)
         return loss
 
-    def forward(self, audio_gt, audio):
-        real_score, gen_score, real_features, gen_features = self.model(audio_gt, audio)
+    def forward(self, *, target_list, pred_list):
+        real_score, gen_score, real_features, gen_features = self.model(
+            target_list=target_list, pred_list=pred_list
+        )
         feature = self.feature_loss(real_features, gen_features)
         gen = self.generator_loss(gen_score)
         tprls = self.tprls_loss(real_score, gen_score)
