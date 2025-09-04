@@ -104,9 +104,14 @@ class TrainContext:
         self.align_loss: CTCLossWithLabelPriors = CTCLossWithLabelPriors(
             prior_scaling_factor=0.3, blank=model_config.text_encoder.tokens
         )
+        # self.magphase_loss: MagPhaseLoss = MagPhaseLoss(
+        #     n_fft=self.model_config.generator.gen_istft_n_fft,
+        #     hop_length=self.model_config.generator.gen_istft_hop_size,
+        # ).to(self.config.training.device)
         self.magphase_loss: MagPhaseLoss = MagPhaseLoss(
-            n_fft=self.model_config.generator.gen_istft_n_fft,
-            hop_length=self.model_config.generator.gen_istft_hop_size,
+            n_fft=self.model_config.n_fft,
+            hop_length=self.model_config.hop_length,
+            win_length=self.model_config.win_length,
         ).to(self.config.training.device)
         self.duration_loss: DurationLoss = None
 

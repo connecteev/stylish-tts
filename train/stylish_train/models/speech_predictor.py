@@ -29,18 +29,19 @@ class SpeechPredictor(torch.nn.Module):
             residual_dim=model_config.decoder.residual_dim,
         )
 
-        self.generator = Generator(
-            style_dim=model_config.style_dim,
-            resblock_kernel_sizes=model_config.generator.resblock_kernel_sizes,
-            upsample_rates=model_config.generator.upsample_rates,
-            upsample_initial_channel=model_config.generator.upsample_initial_channel,
-            upsample_last_channel=model_config.generator.upsample_last_channel,
-            resblock_dilation_sizes=model_config.generator.resblock_dilation_sizes,
-            upsample_kernel_sizes=model_config.generator.upsample_kernel_sizes,
-            gen_istft_n_fft=model_config.generator.gen_istft_n_fft,
-            gen_istft_hop_size=model_config.generator.gen_istft_hop_size,
-            sample_rate=model_config.sample_rate,
-        )
+        # self.generator = Generator(
+        #     style_dim=model_config.style_dim,
+        #     resblock_kernel_sizes=model_config.generator.resblock_kernel_sizes,
+        #     upsample_rates=model_config.generator.upsample_rates,
+        #     upsample_initial_channel=model_config.generator.upsample_initial_channel,
+        #     upsample_last_channel=model_config.generator.upsample_last_channel,
+        #     resblock_dilation_sizes=model_config.generator.resblock_dilation_sizes,
+        #     upsample_kernel_sizes=model_config.generator.upsample_kernel_sizes,
+        #     gen_istft_n_fft=model_config.generator.gen_istft_n_fft,
+        #     gen_istft_hop_size=model_config.generator.gen_istft_hop_size,
+        #     sample_rate=model_config.sample_rate,
+        # )
+        self.generator = Generator()
 
     def forward(self, texts, text_lengths, alignment, pitch, energy):
         text_encoding, _, _ = self.text_encoder(texts, text_lengths)

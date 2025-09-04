@@ -168,7 +168,7 @@ def train_acoustic(
         print_gpu_vram("backward")
 
     return (
-        log.detach(),
+        log.detach(),  # None, None
         detach_all(target_spec),
         detach_all(pred_spec),
     )  # pred.audio.detach()
@@ -206,6 +206,7 @@ stages["acoustic"] = StageType(
     validate_fn=validate_acoustic,
     train_models=["speech_predictor"],
     eval_models=[],
+    # discriminators=[],
     discriminators=["mrd"],
     inputs=[
         "text",
@@ -547,7 +548,7 @@ def train_joint(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.T
         print_gpu_vram("backward")
 
     return (
-        log.detach(),
+        log.detach(),  # None, None
         detach_all(target_spec),
         detach_all(pred_spec),
     )  # pred.audio.detach()
@@ -592,6 +593,7 @@ stages["joint"] = StageType(
     ],
     eval_models=["pe_mel_style_encoder"],
     discriminators=["mrd"],
+    # discriminators=[],
     inputs=[
         "text",
         "text_length",

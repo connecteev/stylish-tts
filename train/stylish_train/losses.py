@@ -38,32 +38,74 @@ class MultiResolutionSTFTLoss(torch.nn.Module):
 class MagPhaseLoss(torch.nn.Module):
     """Magnitude/Phase Loss for Ringformer"""
 
-    def __init__(self, *, n_fft, hop_length):
+    def __init__(self, *, n_fft, hop_length, win_length):
         super(MagPhaseLoss, self).__init__()
-        window = torch.hann_window(n_fft)
+        window = torch.hann_window(win_length)
         self.register_buffer("window", window)
         self.n_fft = n_fft
         self.hop_length = hop_length
+        self.win_length = win_length
+
+        weights = torch.arange(n_fft // 2 + 1)
+        base = math.exp(math.log(5) / (n_fft // 2))
+        weights = torch.pow(base, weights)
+        weights = rearrange(weights, "w -> 1 w 1")
+        self.register_buffer("weights", weights)
+
+    def phase_loss(self, phase_diff):
+        loss = torch.abs(
+            phase_diff - 2 * math.pi * torch.round(phase_diff / (2 * math.pi))
+        )
+        return loss * self.weights
 
     def forward(self, pred, gt, log):
         if pred.magnitude is not None and pred.x is not None and pred.y is not None:
+            pred_phase = torch.atan2(pred.y, pred.x)
             y_stft = torch.stft(
                 gt,
                 n_fft=self.n_fft,
                 hop_length=self.hop_length,
-                win_length=self.n_fft,
+                win_length=self.win_length,
                 return_complex=True,
                 window=self.window,
             )
             target_mag = torch.abs(y_stft) + 1e-14
-            target_x = torch.real(y_stft) / target_mag
-            target_y = torch.imag(y_stft) / target_mag
+            target_phase = torch.angle(y_stft)
             log.add_loss(
                 "mag",
-                torch.nn.functional.l1_loss(pred.magnitude**0.33, target_mag**0.33),
+                torch.nn.functional.l1_loss(
+                    torch.exp(pred.magnitude) ** 0.33, target_mag**0.33
+                ),
             )
-            log.add_loss("phase_x", torch.nn.functional.l1_loss(pred.x, target_x))
-            log.add_loss("phase_y", torch.nn.functional.l1_loss(pred.y, target_y))
+            phase_loss = self.phase_loss(pred_phase - target_phase).mean()
+
+            n_fft = self.n_fft
+            freq_matrix = (
+                torch.triu(torch.ones(n_fft // 2 + 1, n_fft // 2 + 1), diagonal=1)
+                - torch.triu(torch.ones(n_fft // 2 + 1, n_fft // 2 + 1), diagonal=2)
+                - torch.eye(n_fft // 2 + 1)
+            )
+            freq_matrix = freq_matrix.to(pred_phase.device)
+            pred_freq = torch.matmul(pred_phase.transpose(1, 2), freq_matrix)
+            target_freq = torch.matmul(target_phase.transpose(1, 2), freq_matrix)
+            phase_loss += self.phase_loss(
+                (pred_freq - target_freq).transpose(1, 2)
+            ).mean()
+
+            frames = target_phase.shape[2]
+            time_matrix = (
+                torch.triu(torch.ones(frames, frames), diagonal=1)
+                - torch.triu(torch.ones(frames, frames), diagonal=2)
+                - torch.eye(frames)
+            )
+            time_matrix = time_matrix.to(pred_phase.device)
+            pred_time = torch.matmul(pred_phase, time_matrix)
+            target_time = torch.matmul(target_phase, time_matrix)
+            phase_loss += self.phase_loss(pred_time - target_time).mean()
+
+            # phase_diff = pred_phase - target_phase
+            # phase_loss = torch.abs(phase_diff - 2 * math.pi * torch.round(phase_diff / (2 * math.pi)))
+            log.add_loss("phase", phase_loss)
 
 
 class DiscriminatorLoss(torch.nn.Module):
