@@ -164,6 +164,28 @@ class DecoderConfig(BaseModel):
     residual_dim: int = Field(..., description="Residual shortcut dimension")
 
 
+class GeneratorConfig(BaseModel):
+    """
+    Configuration for generator.
+    """
+
+    type: Literal["freegan"] = "freegan"
+    input_dim: int = Field(..., description="Input dimension expected from decoder")
+    hidden_dim: int = Field(..., description="Hidden dimension, ideally n_fft // 2 + 1")
+    conv_intermediate_dim: int = Field(
+        ..., description="Internal dimension for convnext blocks"
+    )
+    io_conv_kernel_size: int = Field(
+        ..., description="Kernel size for input/output convolutions"
+    )
+    conformer_layers: int = Field(
+        ..., description="Number of conformer blocks each for phase/amp"
+    )
+    conv_layers: int = Field(
+        ..., description="Number of convnext block each for phase/amp"
+    )
+
+
 class RingformerGeneratorConfig(BaseModel):
     """
     Configuration for Ringformer generator.
@@ -176,9 +198,7 @@ class RingformerGeneratorConfig(BaseModel):
     upsample_rates: List[int] = Field(
         ..., description="Upsample rates for each upsampling layer."
     )
-    upsample_initial_channel: int = Field(
-        ..., description="Initial channel count for upsampling."
-    )
+    input_dim: int = Field(..., description="Initial channel count for upsampling.")
     upsample_last_channel: int = Field(
         ..., description="Last channel count before istft"
     )
@@ -325,7 +345,7 @@ class ModelConfig(BaseModel):
         ..., description="Configuration for the text aligner component."
     )
     decoder: DecoderConfig = Field(..., description="Decoder configuration parameters.")
-    generator: Union[RingformerGeneratorConfig,] = Field(
+    generator: Union[RingformerGeneratorConfig, GeneratorConfig] = Field(
         ..., description="Generator (vocoder) configuration parameters."
     )
     text_encoder: TextEncoderConfig = Field(

@@ -11,7 +11,6 @@ from .stft import STFT
 from einops import rearrange
 
 import math
-from scipy.signal import get_window
 from utils import DecoderPrediction
 from .ada_norm import AdaptiveGeneratorBlock
 from .ada_norm import AdaptiveLayerNorm
@@ -495,102 +494,47 @@ class SourceModuleHnNSF(torch.nn.Module):
         return sine_merge, noise, uv
 
 
-from munch import Munch
-
-config_h = Munch(
-    {
-        "ASP_channel": 1025,
-        "ASP_input_conv_kernel_size": 7,
-        "ASP_output_conv_kernel_size": 7,
-        "PSP_channel": 1025,
-        "PSP_input_conv_kernel_size": 7,
-        "PSP_output_R_conv_kernel_size": 7,
-        "PSP_output_I_conv_kernel_size": 7,
-        "num_mels": 512,
-        "n_fft": 2048,
-        "hop_size": 300,
-        "win_size": 1200,
-        "sampling_rate": 24000,
-        "fmin": 50,
-        "fmax": 550,
-        "style_dim": 64,
-        "intermediate_dim": 1536,
-    }
-)
-
-
 class Generator(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, *, style_dim, n_fft, win_length, hop_length, config):
         super(Generator, self).__init__()
-        h = config_h
-        self.h = config_h
-        # self.dim = 512
-        self.num_layers = 4
-        window = torch.hann_window(h.win_size)
-        self.register_buffer("window", window, persistent=False)
 
-        # self.harmonic = HarmonicGenerator(
-        #     sample_rate=h.sampling_rate,
-        #     dim_out=self.dim * 2,
-        #     win_length=h.win_size,
-        #     hop_length=h.hop_size,
-        #     divisor=2,
-        # )
-
-        # self.ASP_harmonic_conv = torch.nn.Linear(
-        #     self.dim,
-        #     h.ASP_channel,
-        #     bias=False,
-        #     # h.ASP_input_conv_kernel_size,
-        #     # 1,
-        #     # padding=get_padding(h.ASP_input_conv_kernel_size, 1),
-        # )
-
-        self.ASP_input_conv = Conv1d(
-            h.num_mels,
-            h.ASP_channel,
-            h.ASP_input_conv_kernel_size,
+        self.amp_input_conv = Conv1d(
+            config.input_dim,
+            config.hidden_dim,
+            config.io_conv_kernel_size,
             1,
-            padding=get_padding(h.ASP_input_conv_kernel_size, 1),
+            padding=get_padding(config.io_conv_kernel_size, 1),
         )
 
-        # self.PSP_input_conv = Conv1d(
-        #     h.num_mels,
-        #     h.PSP_channel,
-        #     h.PSP_input_conv_kernel_size,
-        #     1,
-        #     padding=get_padding(h.PSP_input_conv_kernel_size, 1),
-        # )
-
-        self.ASP_output_conv = Conv1d(
-            h.ASP_channel,
-            h.n_fft // 2 + 1,
-            h.ASP_output_conv_kernel_size,
+        self.amp_output_conv = Conv1d(
+            config.hidden_dim,
+            n_fft // 2 + 1,
+            config.io_conv_kernel_size,
             1,
-            padding=get_padding(h.ASP_output_conv_kernel_size, 1),
+            padding=get_padding(config.io_conv_kernel_size, 1),
         )
 
-        self.PSP_output_R_conv = Conv1d(
-            h.PSP_channel,
-            h.n_fft // 2 + 1,
-            h.PSP_output_R_conv_kernel_size,
+        self.phase_output_real_conv = Conv1d(
+            config.hidden_dim,
+            n_fft // 2 + 1,
+            config.io_conv_kernel_size,
             1,
-            padding=get_padding(h.PSP_output_R_conv_kernel_size, 1),
+            padding=get_padding(config.io_conv_kernel_size, 1),
         )
-        self.PSP_output_I_conv = Conv1d(
-            h.PSP_channel,
-            h.n_fft // 2 + 1,
-            h.PSP_output_I_conv_kernel_size,
+        self.phase_output_imag_conv = Conv1d(
+            config.hidden_dim,
+            n_fft // 2 + 1,
+            config.io_conv_kernel_size,
             1,
-            padding=get_padding(h.PSP_output_I_conv_kernel_size, 1),
+            padding=get_padding(config.io_conv_kernel_size, 1),
         )
 
-        self.amp_norm = nn.LayerNorm(h.ASP_channel, eps=1e-6)
-        self.phase_norm = nn.LayerNorm(h.PSP_channel, eps=1e-6)
+        self.amp_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
+        self.phase_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
         self.phase_conformer = Conformer(
-            dim=h.PSP_channel,
-            style_dim=h.style_dim,
-            depth=2,
+            dim=config.hidden_dim,
+            style_dim=style_dim,
+            depth=config.conformer_layers,
             attn_dropout=0.2,
             ff_dropout=0.2,
             conv_dropout=0.2,
@@ -598,17 +542,17 @@ class Generator(torch.nn.Module):
         self.phase_convnext = nn.ModuleList(
             [
                 ConvNeXtBlock(
-                    dim=h.PSP_channel,
-                    intermediate_dim=h.intermediate_dim,
-                    style_dim=h.style_dim,
+                    dim=config.hidden_dim,
+                    intermediate_dim=config.conv_intermediate_dim,
+                    style_dim=style_dim,
                 )
-                for _ in range(self.num_layers)
+                for _ in range(config.conv_layers)
             ]
         )
         self.amp_conformer = Conformer(
-            dim=h.ASP_channel,
-            style_dim=h.style_dim,
-            depth=2,
+            dim=config.hidden_dim,
+            style_dim=style_dim,
+            depth=config.conformer_layers,
             attn_dropout=0.2,
             ff_dropout=0.2,
             conv_dropout=0.2,
@@ -616,31 +560,21 @@ class Generator(torch.nn.Module):
         self.amp_convnext = nn.ModuleList(
             [
                 ConvNeXtBlock(
-                    dim=h.ASP_channel,
-                    intermediate_dim=h.intermediate_dim,
-                    style_dim=h.style_dim,
+                    dim=config.hidden_dim,
+                    intermediate_dim=config.conv_intermediate_dim,
+                    style_dim=style_dim,
                 )
-                for _ in range(self.num_layers)
+                for _ in range(config.conv_layers)
             ]
         )
-        self.amp_final_layer_norm = nn.LayerNorm(h.ASP_channel, eps=1e-6)
-        self.phase_final_layer_norm = nn.LayerNorm(h.PSP_channel, eps=1e-6)
+        self.amp_final_layer_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
+        self.phase_final_layer_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
         self.apply(self._init_weights)
         self.stft = TorchSTFT(
-            filter_length=self.h.n_fft,
-            hop_length=self.h.hop_size,
-            win_length=self.h.win_size,
+            filter_length=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
         )
-        # self.inverse_mel = InverseMel(
-        #     n_fft=self.h.n_fft,
-        #     num_mels=self.h.num_mels,
-        #     sampling_rate=self.h.sampling_rate,
-        #     hop_size=self.h.hop_size,
-        #     win_size=self.h.win_size,
-        #     fmin=self.h.fmin,
-        #     fmax=self.h.fmax,
-        #     # device=self.device
-        # )
 
     def _init_weights(self, m):
         if isinstance(m, nn.Conv1d):  # (nn.Conv1d, nn.Linear)):
@@ -648,84 +582,46 @@ class Generator(torch.nn.Module):
             nn.init.constant_(m.bias, 0)
 
     def forward(self, *, mel, style, pitch, energy):
-        # har_spec, har_phase = self.harmonic(pitch, energy)
-        # har_spec = har_spec.transpose(1, 2)
-        # har_spec = self.ASP_harmonic_conv(har_spec)
-        # har_spec = har_spec.transpose(1, 2)
-        # inv_amp = self.inverse_mel.execute(mel).abs().clamp_min(1e-5)
-        # logamp = inv_amp.log()
-
-        logamp = self.ASP_input_conv(mel)
-        logamp = self.amp_norm(logamp.transpose(1, 2))
-
-        # logamp = logamp.transpose(1, 2)
-        # for conv_block in self.amp_convnext:
-        #     logamp = conv_block(logamp, style)
-
+        logamp = self.amp_input_conv(mel)
+        logamp = logamp.transpose(1, 2)
+        logamp = self.amp_norm(logamp)
         logamp = self.amp_conformer(logamp, style)
         logamp = logamp.transpose(1, 2)
         for conv_block in self.amp_convnext:
             logamp = conv_block(logamp, style)
 
-        pha = logamp
-        logamp = self.amp_final_layer_norm(logamp.transpose(1, 2))
         logamp = logamp.transpose(1, 2)
-        logamp = self.ASP_output_conv(logamp)
+        phase = logamp
+        logamp = self.amp_final_layer_norm(logamp)
+        logamp = logamp.transpose(1, 2)
+        logamp = self.amp_output_conv(logamp)
 
-        # pha = self.PSP_input_conv(mel)
-        pha = self.phase_norm(pha.transpose(1, 2))
-        # pha = pha.transpose(1, 2)
-        # for conv_block in self.phase_convnext:
-        #     pha = conv_block(pha, style)
-
-        # pha = pha.transpose(1, 2)
-        pha = self.phase_conformer(pha, style)
-        pha = pha.transpose(1, 2)
+        phase = self.phase_norm(phase)
+        phase = self.phase_conformer(phase, style)
+        phase = phase.transpose(1, 2)
         for conv_block in self.phase_convnext:
-            pha = conv_block(pha, style)
+            phase = conv_block(phase, style)
+        phase = phase.transpose(1, 2)
+        phase = self.phase_final_layer_norm(phase)
+        phase = phase.transpose(1, 2)
+        real = self.phase_output_real_conv(phase)
+        imag = self.phase_output_imag_conv(phase)
 
-        pha = self.phase_final_layer_norm(pha.transpose(1, 2))
-        pha = pha.transpose(1, 2)
-        R = self.PSP_output_R_conv(pha)
-        I = self.PSP_output_I_conv(pha)
-
-        pha = torch.atan2(I, R)
+        phase = torch.atan2(imag, real)
 
         logamp = F.pad(logamp, pad=(0, 1), mode="replicate")
-        pha = F.pad(pha, pad=(0, 1), mode="replicate")
+        phase = F.pad(phase, pad=(0, 1), mode="replicate")
 
         spec = torch.exp(logamp)
-        x = torch.cos(pha)
-        y = torch.sin(pha)
+        x = torch.cos(phase)
+        y = torch.sin(phase)
 
         audio = self.stft.inverse(spec, x, y).to(x.device)
-
-        # amp = logamp.abs() ** 3 + 1e-9
-        # rea is the real part of the complex number
-        # rea = amp * torch.cos(pha)
-        # imag is the imaginary part of the complex number
-        # imag = amp * torch.sin(pha)
-
-        # spec = torch.complex(rea, imag)
-
-        # audio = torch.istft(
-        #     spec,
-        #     self.h.n_fft,
-        #     hop_length=self.h.hop_size,
-        #     win_length=self.h.win_size,
-        #     window=self.window,
-        #     center=True,
-        # )
-
-        # audio = torch.tanh(audio)
+        audio = torch.tanh(audio)
         return DecoderPrediction(
-            audio=audio,  # .unsqueeze(1),
+            audio=audio,
             magnitude=logamp,
-            phase=pha,
-            # log_amplitude=logamp,
-            # phase=pha,
-            # real=rea,
-            # imaginary=imag,
+            phase=phase,
         )
 
 
@@ -745,7 +641,6 @@ class ConvNeXtBlock(torch.nn.Module):
         self.pwconv1 = torch.nn.Linear(
             dim, intermediate_dim
         )  # pointwise/1x1 convs, implemented with linear layers
-        # self.act = torch.nn.GELU()
         self.snake = torch.nn.Parameter(torch.ones(1, 1, intermediate_dim))
         self.grn = GRN(intermediate_dim)
         self.pwconv2 = torch.nn.Linear(intermediate_dim, dim)
