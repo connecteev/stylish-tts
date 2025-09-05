@@ -62,7 +62,7 @@ def padDiff(x):
     )
 
 
-class GeneratorOld(torch.nn.Module):
+class UpsampleGenerator(torch.nn.Module):
     def __init__(
         self,
         style_dim,
@@ -76,7 +76,7 @@ class GeneratorOld(torch.nn.Module):
         gen_istft_hop_size,
         sample_rate,
     ):
-        super(Generator, self).__init__()
+        super(UpsampleGenerator, self).__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
         self.upsample_rates = upsample_rates
@@ -235,13 +235,13 @@ class GeneratorOld(torch.nn.Module):
         x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
         x = self.conv_post(x)
 
-        spec = x[:, : self.post_n_fft // 2 + 1, :]
-        spec = spec.abs() ** 3 + 1e-9
+        logamp = x[:, : self.post_n_fft // 2 + 1, :]
+        spec = torch.exp(logamp)
         phase = x[:, self.post_n_fft // 2 + 1 :, :]
         x_phase = torch.cos(phase)
         y_phase = torch.sin(phase)
         out = self.stft.inverse(spec, x_phase, y_phase).to(x.device)
-        return DecoderPrediction(audio=out, magnitude=spec, x=x_phase, y=y_phase)
+        return DecoderPrediction(audio=out, magnitude=logamp, phase=phase)
 
 
 # The following code was adapted from: https://github.com/nii-yamagishilab/project-CURRENNT-scripts/tree/master/waveform-modeling/project-NSF-v2-pretrained
@@ -721,8 +721,7 @@ class Generator(torch.nn.Module):
         return DecoderPrediction(
             audio=audio,  # .unsqueeze(1),
             magnitude=logamp,
-            x=x,
-            y=y,
+            phase=pha,
             # log_amplitude=logamp,
             # phase=pha,
             # real=rea,

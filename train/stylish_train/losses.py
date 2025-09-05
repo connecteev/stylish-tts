@@ -59,56 +59,48 @@ class MagPhaseLoss(torch.nn.Module):
         return loss * self.weights
 
     def forward(self, pred, gt, log):
-        if pred.magnitude is not None and pred.x is not None and pred.y is not None:
-            pred_phase = torch.atan2(pred.y, pred.x)
-            y_stft = torch.stft(
-                gt,
-                n_fft=self.n_fft,
-                hop_length=self.hop_length,
-                win_length=self.win_length,
-                return_complex=True,
-                window=self.window,
-            )
-            target_mag = torch.abs(y_stft) + 1e-14
-            target_phase = torch.angle(y_stft)
-            log.add_loss(
-                "mag",
-                torch.nn.functional.l1_loss(
-                    # torch.exp(pred.magnitude) ** 0.33, target_mag**0.33
-                    # pred.magnitude, target_mag ** 0.3333
-                    pred.magnitude,
-                    target_mag.log(),
-                ),
-            )
-            phase_loss = self.phase_loss(pred_phase - target_phase).mean()
+        y_stft = torch.stft(
+            gt,
+            n_fft=self.n_fft,
+            hop_length=self.hop_length,
+            win_length=self.win_length,
+            return_complex=True,
+            window=self.window,
+        )
+        target_mag = torch.abs(y_stft) + 1e-14
+        target_phase = torch.angle(y_stft)
+        log.add_loss(
+            "mag",
+            torch.nn.functional.l1_loss(
+                pred.magnitude,
+                target_mag.log(),
+            ),
+        )
+        phase_loss = self.phase_loss(pred.phase - target_phase).mean()
 
-            n_fft = self.n_fft
-            freq_matrix = (
-                torch.triu(torch.ones(n_fft // 2 + 1, n_fft // 2 + 1), diagonal=1)
-                - torch.triu(torch.ones(n_fft // 2 + 1, n_fft // 2 + 1), diagonal=2)
-                - torch.eye(n_fft // 2 + 1)
-            )
-            freq_matrix = freq_matrix.to(pred_phase.device)
-            pred_freq = torch.matmul(pred_phase.transpose(1, 2), freq_matrix)
-            target_freq = torch.matmul(target_phase.transpose(1, 2), freq_matrix)
-            phase_loss += self.phase_loss(
-                (pred_freq - target_freq).transpose(1, 2)
-            ).mean()
+        n_fft = self.n_fft
+        freq_matrix = (
+            torch.triu(torch.ones(n_fft // 2 + 1, n_fft // 2 + 1), diagonal=1)
+            - torch.triu(torch.ones(n_fft // 2 + 1, n_fft // 2 + 1), diagonal=2)
+            - torch.eye(n_fft // 2 + 1)
+        )
+        freq_matrix = freq_matrix.to(pred.phase.device)
+        pred_freq = torch.matmul(pred.phase.transpose(1, 2), freq_matrix)
+        target_freq = torch.matmul(target_phase.transpose(1, 2), freq_matrix)
+        phase_loss += self.phase_loss((pred_freq - target_freq).transpose(1, 2)).mean()
 
-            frames = target_phase.shape[2]
-            time_matrix = (
-                torch.triu(torch.ones(frames, frames), diagonal=1)
-                - torch.triu(torch.ones(frames, frames), diagonal=2)
-                - torch.eye(frames)
-            )
-            time_matrix = time_matrix.to(pred_phase.device)
-            pred_time = torch.matmul(pred_phase, time_matrix)
-            target_time = torch.matmul(target_phase, time_matrix)
-            phase_loss += self.phase_loss(pred_time - target_time).mean()
+        frames = target_phase.shape[2]
+        time_matrix = (
+            torch.triu(torch.ones(frames, frames), diagonal=1)
+            - torch.triu(torch.ones(frames, frames), diagonal=2)
+            - torch.eye(frames)
+        )
+        time_matrix = time_matrix.to(pred.phase.device)
+        pred_time = torch.matmul(pred.phase, time_matrix)
+        target_time = torch.matmul(target_phase, time_matrix)
+        phase_loss += self.phase_loss(pred_time - target_time).mean()
 
-            # phase_diff = pred_phase - target_phase
-            # phase_loss = torch.abs(phase_diff - 2 * math.pi * torch.round(phase_diff / (2 * math.pi)))
-            log.add_loss("phase", phase_loss)
+        log.add_loss("phase", phase_loss)
 
 
 class DiscriminatorLoss(torch.nn.Module):
