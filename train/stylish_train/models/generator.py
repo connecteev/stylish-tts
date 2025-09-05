@@ -499,10 +499,10 @@ from munch import Munch
 
 config_h = Munch(
     {
-        "ASP_channel": 512,
+        "ASP_channel": 1025,
         "ASP_input_conv_kernel_size": 7,
         "ASP_output_conv_kernel_size": 7,
-        "PSP_channel": 512,
+        "PSP_channel": 1025,
         "PSP_input_conv_kernel_size": 7,
         "PSP_output_R_conv_kernel_size": 7,
         "PSP_output_I_conv_kernel_size": 7,
@@ -524,8 +524,8 @@ class Generator(torch.nn.Module):
         super(Generator, self).__init__()
         h = config_h
         self.h = config_h
-        self.dim = 512
-        self.num_layers = 8
+        # self.dim = 512
+        self.num_layers = 4
         window = torch.hann_window(h.win_size)
         self.register_buffer("window", window, persistent=False)
 
@@ -585,8 +585,16 @@ class Generator(torch.nn.Module):
             padding=get_padding(h.PSP_output_I_conv_kernel_size, 1),
         )
 
-        self.amp_norm = nn.LayerNorm(self.dim, eps=1e-6)
-        self.phase_norm = nn.LayerNorm(self.dim, eps=1e-6)
+        self.amp_norm = nn.LayerNorm(h.ASP_channel, eps=1e-6)
+        self.phase_norm = nn.LayerNorm(h.PSP_channel, eps=1e-6)
+        self.phase_conformer = Conformer(
+            dim=h.PSP_channel,
+            style_dim=h.style_dim,
+            depth=2,
+            attn_dropout=0.2,
+            ff_dropout=0.2,
+            conv_dropout=0.2,
+        )
         self.phase_convnext = nn.ModuleList(
             [
                 ConvNeXtBlock(
@@ -596,6 +604,14 @@ class Generator(torch.nn.Module):
                 )
                 for _ in range(self.num_layers)
             ]
+        )
+        self.amp_conformer = Conformer(
+            dim=h.ASP_channel,
+            style_dim=h.style_dim,
+            depth=2,
+            attn_dropout=0.2,
+            ff_dropout=0.2,
+            conv_dropout=0.2,
         )
         self.amp_convnext = nn.ModuleList(
             [
@@ -607,9 +623,14 @@ class Generator(torch.nn.Module):
                 for _ in range(self.num_layers)
             ]
         )
-        self.amp_final_layer_norm = nn.LayerNorm(self.dim, eps=1e-6)
-        self.phase_final_layer_norm = nn.LayerNorm(self.dim, eps=1e-6)
+        self.amp_final_layer_norm = nn.LayerNorm(h.ASP_channel, eps=1e-6)
+        self.phase_final_layer_norm = nn.LayerNorm(h.PSP_channel, eps=1e-6)
         self.apply(self._init_weights)
+        self.stft = TorchSTFT(
+            filter_length=self.h.n_fft,
+            hop_length=self.h.hop_size,
+            win_length=self.h.win_size,
+        )
         # self.inverse_mel = InverseMel(
         #     n_fft=self.h.n_fft,
         #     num_mels=self.h.num_mels,
@@ -636,9 +657,16 @@ class Generator(torch.nn.Module):
 
         logamp = self.ASP_input_conv(mel)
         logamp = self.amp_norm(logamp.transpose(1, 2))
+
+        # logamp = logamp.transpose(1, 2)
+        # for conv_block in self.amp_convnext:
+        #     logamp = conv_block(logamp, style)
+
+        logamp = self.amp_conformer(logamp, style)
         logamp = logamp.transpose(1, 2)
         for conv_block in self.amp_convnext:
             logamp = conv_block(logamp, style)
+
         pha = logamp
         logamp = self.amp_final_layer_norm(logamp.transpose(1, 2))
         logamp = logamp.transpose(1, 2)
@@ -646,9 +674,16 @@ class Generator(torch.nn.Module):
 
         # pha = self.PSP_input_conv(mel)
         pha = self.phase_norm(pha.transpose(1, 2))
+        # pha = pha.transpose(1, 2)
+        # for conv_block in self.phase_convnext:
+        #     pha = conv_block(pha, style)
+
+        # pha = pha.transpose(1, 2)
+        pha = self.phase_conformer(pha, style)
         pha = pha.transpose(1, 2)
         for conv_block in self.phase_convnext:
             pha = conv_block(pha, style)
+
         pha = self.phase_final_layer_norm(pha.transpose(1, 2))
         pha = pha.transpose(1, 2)
         R = self.PSP_output_R_conv(pha)
@@ -658,28 +693,36 @@ class Generator(torch.nn.Module):
 
         logamp = F.pad(logamp, pad=(0, 1), mode="replicate")
         pha = F.pad(pha, pad=(0, 1), mode="replicate")
+
+        spec = torch.exp(logamp)
+        x = torch.cos(pha)
+        y = torch.sin(pha)
+
+        audio = self.stft.inverse(spec, x, y).to(x.device)
+
+        # amp = logamp.abs() ** 3 + 1e-9
         # rea is the real part of the complex number
-        rea = torch.exp(logamp) * torch.cos(pha)
+        # rea = amp * torch.cos(pha)
         # imag is the imaginary part of the complex number
-        imag = torch.exp(logamp) * torch.sin(pha)
+        # imag = amp * torch.sin(pha)
 
-        spec = torch.complex(rea, imag)
+        # spec = torch.complex(rea, imag)
 
-        audio = torch.istft(
-            spec,
-            self.h.n_fft,
-            hop_length=self.h.hop_size,
-            win_length=self.h.win_size,
-            window=self.window,
-            center=True,
-        )
+        # audio = torch.istft(
+        #     spec,
+        #     self.h.n_fft,
+        #     hop_length=self.h.hop_size,
+        #     win_length=self.h.win_size,
+        #     window=self.window,
+        #     center=True,
+        # )
 
         # audio = torch.tanh(audio)
         return DecoderPrediction(
             audio=audio,  # .unsqueeze(1),
             magnitude=logamp,
-            x=rea,
-            y=imag,
+            x=x,
+            y=y,
             # log_amplitude=logamp,
             # phase=pha,
             # real=rea,

@@ -50,10 +50,12 @@ class MultiSpectrogram(torch.nn.Module):
         for spec in self.specs:
             with torch.no_grad():
                 t = spec(target)
-                t = torch.pow(self.mel_scale(t), 0.3333)
+                t = torch.log(1 + self.mel_scale(t))
+                # t = torch.pow(self.mel_scale(t), 0.3333)
                 t = rearrange(t, "b f t -> b 1 f t")
             p = spec(pred)
-            p = torch.pow(self.mel_scale(p), 0.3333)
+            # p = torch.pow(self.mel_scale(p), 0.3333)
+            p = torch.log(1 + self.mel_scale(p))
             p = rearrange(p, "b f t -> b 1 f t")
             target_result.append(t)
             pred_result.append(p)

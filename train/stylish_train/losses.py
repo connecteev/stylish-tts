@@ -47,7 +47,7 @@ class MagPhaseLoss(torch.nn.Module):
         self.win_length = win_length
 
         weights = torch.arange(n_fft // 2 + 1)
-        base = math.exp(math.log(5) / (n_fft // 2))
+        base = math.exp(math.log(2.5) / (n_fft // 2))
         weights = torch.pow(base, weights)
         weights = rearrange(weights, "w -> 1 w 1")
         self.register_buffer("weights", weights)
@@ -74,7 +74,10 @@ class MagPhaseLoss(torch.nn.Module):
             log.add_loss(
                 "mag",
                 torch.nn.functional.l1_loss(
-                    torch.exp(pred.magnitude) ** 0.33, target_mag**0.33
+                    # torch.exp(pred.magnitude) ** 0.33, target_mag**0.33
+                    # pred.magnitude, target_mag ** 0.3333
+                    pred.magnitude,
+                    target_mag.log(),
                 ),
             )
             phase_loss = self.phase_loss(pred_phase - target_phase).mean()

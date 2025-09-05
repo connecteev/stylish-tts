@@ -6,6 +6,7 @@ from einops.layers.torch import Rearrange
 from einops import rearrange
 from torch import nn, einsum
 from .text_encoder import sequence_mask
+from .ada_norm import AdaptiveLayerNorm
 
 import logging
 
@@ -64,19 +65,19 @@ class Scale(nn.Module):
         self.fn = fn
         self.scale = scale
 
-    def forward(self, x, **kwargs):
-        return self.fn(x, **kwargs) * self.scale
+    def forward(self, x, style, **kwargs):
+        return self.fn(x, style, **kwargs) * self.scale
 
 
 class PreNorm(nn.Module):
-    def __init__(self, dim, fn):
+    def __init__(self, dim, style_dim, fn):
         super().__init__()
         self.fn = fn
-        self.norm = nn.LayerNorm(dim)
+        self.norm = AdaptiveLayerNorm(style_dim, dim)
 
-    def forward(self, x, **kwargs):
-        x = self.norm(x.to(x.device))
-        result = self.fn(x.to(x.device), **kwargs)
+    def forward(self, x, style, **kwargs):
+        x = self.norm(x, style)
+        result = self.fn(x, **kwargs)
         return result
 
 
@@ -158,15 +159,21 @@ class Attention(nn.Module):
 
 class ConformerConvModule(nn.Module):
     def __init__(
-        self, dim, causal=False, expansion_factor=2, kernel_size=31, dropout=0.0
+        self,
+        dim,
+        style_dim,
+        causal=False,
+        expansion_factor=2,
+        kernel_size=31,
+        dropout=0.0,
     ):
         super().__init__()
 
         inner_dim = dim * expansion_factor
         padding = calc_same_padding(kernel_size) if not causal else (kernel_size - 1, 0)
 
+        self.norm = AdaptiveLayerNorm(style_dim, dim)
         self.net = nn.Sequential(
-            nn.LayerNorm(dim),
             Rearrange("b n c -> b c n"),
             nn.Conv1d(dim, inner_dim * 2, 1),
             GLU(dim=1),
@@ -180,7 +187,8 @@ class ConformerConvModule(nn.Module):
             nn.Dropout(dropout),
         )
 
-    def forward(self, x):
+    def forward(self, x, style):
+        x = self.norm(x, style)
         return self.net(x)
 
 
@@ -192,6 +200,7 @@ class ConformerBlock(nn.Module):
         self,
         *,
         dim,
+        style_dim,
         dim_head=64,
         heads=8,
         ff_mult=4,
@@ -215,6 +224,7 @@ class ConformerBlock(nn.Module):
         self.self_attn_dropout = torch.nn.Dropout(attn_dropout)
         self.conv = ConformerConvModule(
             dim=dim,
+            style_dim=style_dim,
             causal=conv_causal,
             expansion_factor=conv_expansion_factor,
             kernel_size=conv_kernel_size,
@@ -222,20 +232,20 @@ class ConformerBlock(nn.Module):
         )
         self.ff2 = FeedForward(dim=dim, mult=ff_mult, dropout=ff_dropout)
 
-        self.attn = PreNorm(dim, self.attn)
-        self.ff1 = Scale(0.5, PreNorm(dim, self.ff1))
-        self.ff2 = Scale(0.5, PreNorm(dim, self.ff2))
+        self.attn = PreNorm(dim, style_dim, self.attn)
+        self.ff1 = Scale(0.5, PreNorm(dim, style_dim, self.ff1))
+        self.ff2 = Scale(0.5, PreNorm(dim, style_dim, self.ff2))
 
-        self.post_norm = nn.LayerNorm(dim)
+        self.post_norm = AdaptiveLayerNorm(style_dim, dim)
 
-    def forward(self, x, mask=None):
-        x_ff1 = self.ff1(x) + x
-        x = self.attn(x, mask=mask)
+    def forward(self, x, style, mask=None):
+        x_ff1 = self.ff1(x, style) + x
+        x = self.attn(x, style, mask=mask)
         x = self.self_attn_dropout(x)
         x = x + x_ff1
-        x = self.conv(x) + x
-        x = self.ff2(x) + x
-        x = self.post_norm(x)
+        x = self.conv(x, style) + x
+        x = self.ff2(x, style) + x
+        x = self.post_norm(x, style)
         return x
 
 
@@ -247,6 +257,7 @@ class Conformer(nn.Module):
         self,
         dim,
         *,
+        style_dim,
         depth,
         dim_head=64,
         heads=8,
@@ -267,6 +278,7 @@ class Conformer(nn.Module):
             self.layers.append(
                 ConformerBlock(
                     dim=dim,
+                    style_dim=style_dim,
                     dim_head=dim_head,
                     heads=heads,
                     ff_mult=ff_mult,
@@ -277,13 +289,13 @@ class Conformer(nn.Module):
                 )
             )
 
-    def forward(self, x, lengths=None):
+    def forward(self, x, style, lengths=None):
         # if lengths is None:
         #     lengths = torch.full((x.shape[0],), x.shape[1], dtype=x.dtype)
         mask = None
         if lengths is not None:
             mask = sequence_mask(lengths, max_length=x.shape[1]).to(x.device)
         for block in self.layers:
-            x = block(x, mask)
+            x = block(x, style, mask)
 
         return x
