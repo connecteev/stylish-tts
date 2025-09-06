@@ -4,6 +4,23 @@ Stylish TTS is a lightweight text-to-speech system suitable for offline local us
 
 TODO: Make some samples
 
+# Roadmap to Release
+
+Stylish TTS is getting close to release. But before release, we need to complete these tasks:
+
+- [ ] Verify final model architecture
+- [ ] Merge disc-opt into main
+- [ ] Verify ONNX conversion
+- [ ] Rework CLI
+- [ ] Import pitch cache script and make it use a concurrent.futures worker pool
+- [ ] Make sure it can work as a PyPi package
+- [ ] Do proper stage detection in dataloader to prevent mixups with precached alignment/pitch
+- [ ] Replace checkpointing with safetensors instead of accelerator checkpoint
+- [ ] Remove dependency on accelerator
+- [ ] Audit dependencies
+- [ ] Audit and fix any remaining torch warnings
+- [ ] Move test_onnx to stylish-tts module and remake it into at least a barebones inferencer.
+
 # Getting Started
 
 ## Dependencies
