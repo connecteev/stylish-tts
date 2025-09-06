@@ -1,11 +1,11 @@
 import click
 import importlib.resources
-import stylish_lib.config
+import config
 
 
 def get_configs(config_path, model_path):
     if len(model_path) == 0:
-        f = importlib.resources.open_text(stylish_lib.config, "model.yml")
+        f = importlib.resources.open_text(config, "model.yml")
     else:
         f = open(model_path, "r")
 
@@ -56,12 +56,14 @@ def dataprep():
 )
 @click.argument(
     "out-file",
-    "out_file",
     required=True,
     type=str,
-    help="Output filename for resulting alignment model.",
 )
 def train_align(*args, **kwargs):
+    """Train alignment model
+
+    <out-file> is the filename where the resulting alignment model will be saved.
+    """
     print(args, kwargs)
 
 
@@ -90,11 +92,13 @@ def train_align(*args, **kwargs):
 )
 @click.argument(
     "out-file",
-    "out_file",
     type=str,
-    help="Output filename for cached alignments (defaults to the path in alignment_path from the config file).",
 )
 def align(*args, **kwargs):
+    """Align dataset
+
+    Use an alignment model to precache the alignments for your dataset. The alignments are saved to the alignment_path from the config file.
+    """
     print(args, kwargs)
 
 
@@ -116,11 +120,13 @@ def align(*args, **kwargs):
 )
 @click.argument(
     "out-file",
-    "out_file",
     type=str,
-    help="Output filename for cached pitches (defaults to the path in pitch_path from the config file).",
 )
 def pitch(*args, **kwargs):
+    """Calculate pitch for a dataset
+
+    Calculates the fundamental frequencies for every segment in your dataset. The pitches are saved to the pitch_path from the config file.
+    """
     print(args, kwargs)
 
 
@@ -147,7 +153,7 @@ def pitch(*args, **kwargs):
     "--stage",
     default="acoustic",
     type=str,
-    help="Training stage should be one of 'acoustic', 'textual'.",
+    help="Training stage should be one of 'acoustic', 'textual', 'style', 'duration'.",
 )
 @click.option(
     "--checkpoint",
@@ -162,6 +168,10 @@ def pitch(*args, **kwargs):
     help="If loading a checkpoint, do not skip epochs and data.",
 )
 def train(**kwargs):
+    """Train a model
+
+    Train a Stylish TTS model. You must have already precached alignment and pitch information for the dataset. Stage should be 'acoustic' to begin with unless you are loading a checkpoint.
+    """
     print(kwargs)
 
 
@@ -171,12 +181,14 @@ def train(**kwargs):
 )
 @click.argument(
     "out-file",
-    "out_file",
     required=True,
     type=str,
-    help="Output filename for resulting ONNX model.",
 )
 def convert(*args, **kwargs):
+    """Convert a model to ONNX
+
+    The converted model will be saved in <out-file>.
+    """
     print(args, kwargs)
 
 
