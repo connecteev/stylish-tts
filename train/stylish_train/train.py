@@ -66,32 +66,19 @@ class LoggerManager:
         self.file_handler = self.add_file_handler(logger, out_dir)
 
 
-@click.command()
-@click.option("-p", "--config_path", default="configs/new.config.yml", type=str)
-@click.option("-cp", "--model_config_path", default="config/model.config.yml", type=str)
-@click.option("--out_dir", type=str)
-@click.option("--stage", default="first_tma", type=str)
-@click.option("--checkpoint", default="", type=str)
-@click.option("--reset_stage", default=False, type=bool)
-@click.option("--convert", default=False, type=bool)
-def main(
-    config_path, model_config_path, out_dir, stage, checkpoint, reset_stage, convert
+def train_model(
+    config,
+    model_config,
+    out_dir,
+    stage,
+    checkpoint,
+    reset_stage,
+    config_path,
+    model_config_path,
 ):
+    convert = False
     np.random.seed(1)
     random.seed(1)
-    if osp.exists(config_path):
-        config = load_config_yaml(config_path)
-    else:
-        # TODO: we may be able to pull it out of the model if a model is passed in instead
-        logger.error(f"Config file not found at {config_path}")
-        exit(1)
-
-    if osp.exists(model_config_path):
-        model_config = load_model_config_yaml(model_config_path)
-    else:
-        # TODO: we may be able to pull it out of the model if a model is passed in instead
-        logger.error(f"Config file not found at {model_config_path}")
-        exit(1)
 
     train_logger = logging.getLogger(__name__)
 
@@ -105,23 +92,37 @@ def main(
     logger_manager = LoggerManager(train_logger, train.out_dir)
 
     shutil.copy(config_path, osp.join(train.out_dir, osp.basename(config_path)))
-    shutil.copy(
-        model_config_path, osp.join(train.out_dir, osp.basename(model_config_path))
-    )
+    if len(model_config_path) > 0:
+        shutil.copy(
+            model_config_path, osp.join(train.out_dir, osp.basename(model_config_path))
+        )
     save_git_diff(train.out_dir)
 
     # Set up data loaders and batch manager
-    if not osp.exists(train.config.dataset.train_data):
-        exit(f"Train data not found at {train.config.dataset.train_data}")
-    if not osp.exists(train.config.dataset.val_data):
-        exit(f"Validation data not found at {train.config.dataset.val_data}")
-    if not osp.exists(train.config.dataset.wav_path):
-        exit(f"Root wav path not found at {train.config.dataset.wav_path}")
-    if not osp.exists(train.config.dataset.pitch_path):
-        exit(f"Pitch path not found at {train.config.dataset.pitch_path}")
-    if not osp.exists(train.config.dataset.alignment_path) and stage != "alignment":
-        exit(f"Alignment path not found at {train.config.dataset.alignment_path}")
-    val_list = get_data_path_list(train.config.dataset.val_data)
+    if not osp.exists(train.data_path(train.config.dataset.train_data)):
+        exit(
+            f"Train data not found at {train.data_path(train.config.dataset.train_data)}"
+        )
+    if not osp.exists(train.data_path(train.config.dataset.val_data)):
+        exit(
+            f"Validation data not found at {train.data_path(train.config.dataset.val_data)}"
+        )
+    if not osp.exists(train.data_path(train.config.dataset.wav_path)):
+        exit(
+            f"Root wav path not found at {train.data_path(train.config.dataset.wav_path)}"
+        )
+    if not osp.exists(train.data_path(train.config.dataset.pitch_path)):
+        exit(
+            f"Pitch path not found at {train.data_path(train.config.dataset.pitch_path)}"
+        )
+    if (
+        not osp.exists(train.data_path(train.config.dataset.alignment_path))
+        and stage != "alignment"
+    ):
+        exit(
+            f"Alignment path not found at {train.data_path(train.config.dataset.alignment_path)}"
+        )
+    val_list = get_data_path_list(train.data_path(train.config.dataset.val_data))
     # force somewhat determanistic selection of validation samples
     hashed_data = []
     for line in val_list:
@@ -141,11 +142,11 @@ def main(
 
     val_dataset = FilePathDataset(
         data_list=val_list,
-        root_path=train.config.dataset.wav_path,
+        root_path=train.data_path(train.config.dataset.wav_path),
         text_cleaner=train.text_cleaner,
         model_config=train.model_config,
-        pitch_path=train.config.dataset.pitch_path,
-        alignment_path=train.config.dataset.alignment_path,
+        pitch_path=train.data_path(train.config.dataset.pitch_path),
+        alignment_path=train.data_path(train.config.dataset.alignment_path),
         duration_processor=train.duration_processor,
     )
     val_time_bins, _ = val_dataset.time_bins()
@@ -390,7 +391,9 @@ def train_val_loop(train: TrainContext, should_fast_forward=False):
 
 
 def save_alignment(train: TrainContext) -> None:
-    path = osp.join(train.base_output_dir, "alignment_model.safetensors")
+    path = osp.join(
+        train.config.dataset.path, train.config.dataset.alignment_model_path
+    )
     logger.info(f"Saving alignment to {path}")
     save_file(train.model.text_aligner.state_dict(), path)
 
@@ -414,5 +417,5 @@ def save_checkpoint(
     logger.info(f"Saved checkpoint to {checkpoint_dir}")
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()

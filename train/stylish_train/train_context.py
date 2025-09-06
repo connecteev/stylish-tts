@@ -20,6 +20,8 @@ from stylish_lib.text_utils import TextCleaner
 import torchaudio
 from utils import DurationProcessor
 from multi_spectrogram import MultiSpectrogram
+from pathlib import Path
+import traceback
 
 
 class Manifest:
@@ -139,3 +141,6 @@ class TrainContext:
 
     def reset_out_dir(self, stage_name):
         self.out_dir = osp.join(self.base_output_dir, stage_name)
+
+    def data_path(self, path: str) -> Path:
+        return Path(self.config.dataset.path) / path

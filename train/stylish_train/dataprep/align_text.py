@@ -25,32 +25,20 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-device = "cpu"
-if torch.cuda.is_available():
-    device = "cuda"
-
 logger = logging.getLogger(__name__)
 
+# TODO: Merge this to_mel implementation with the one in stage_type
 to_mel = None
 
 
-@click.command()
-@click.option("-p", "--config_path", default="configs/new.config.yml", type=str)
-@click.option("-cp", "--model_config_path", default="config/model.config.yml", type=str)
-@click.option("--out", type=str)
-@click.option("--model", type=str)
-def main(config_path, model_config_path, out, model):
+def align_text(config, model_config):
+    root = pathlib.Path(config.dataset.path)
+
+    out = root / config.dataset.alignment_path
+    model = root / config.dataset.alignment_model_path
+    device = config.training.device
+
     global to_mel
-    if osp.exists(config_path):
-        config = load_config_yaml(config_path)
-    else:
-        logger.error(f"Config file not found at {config_path}")
-        exit(1)
-    if osp.exists(model_config_path):
-        model_config = load_model_config_yaml(model_config_path)
-    else:
-        logger.error(f"Config file not found at {model_config_path}")
-        exit(1)
 
     to_mel = torchaudio.transforms.MelSpectrogram(
         n_mels=80,  # align seems to perform worse on higher n_mels
@@ -70,25 +58,29 @@ def main(config_path, model_config_path, out, model):
 
     text_cleaner = TextCleaner(model_config.symbol)
 
-    wavdir = pathlib.Path(config.dataset.wav_path)
+    wavdir = root / config.dataset.wav_path
     vals, scores = calculate_alignments(
-        pathlib.Path(config.dataset.val_data),
+        "Val Set",
+        root / config.dataset.val_data,
         wavdir,
         aligner,
         model_config,
         text_cleaner,
+        device,
     )
-    with open(pathlib.Path(out).parent / "scores_val.txt", "w") as f:
+    with open(pathlib.Path(config.dataset.path) / "scores_val.txt", "w") as f:
         for name in scores.keys():
             f.write(str(scores[name]) + " " + name + "\n")
     trains, scores = calculate_alignments(
-        pathlib.Path(config.dataset.train_data),
+        "Train Set",
+        root / config.dataset.train_data,
         wavdir,
         aligner,
         model_config,
         text_cleaner,
+        device,
     )
-    with open(pathlib.Path(out).parent / "scores_train.txt", "w") as f:
+    with open(pathlib.Path(config.dataset.path) / "scores_train.txt", "w") as f:
         for name in scores.keys():
             f.write(str(scores[name]) + " " + name + "\n")
     result = vals | trains
@@ -105,16 +97,21 @@ def preprocess(wave):
 
 
 @torch.no_grad()
-def calculate_alignments(path, wavdir, aligner, model_config, text_cleaner):
+def calculate_alignments(
+    label, path, wavdir, aligner, model_config, text_cleaner, device
+):
+    with path.open("r") as f:
+        total_segments = sum(1 for _ in f)
     alignment_map = {}
     scores_map = {}
     iterator = tqdm.tqdm(
         iterable=audio_list(path, wavdir, model_config),
-        desc="Aligning",
+        desc="Aligning " + label,
         unit="segments",
         initial=0,
         colour="MAGENTA",
         dynamic_ncols=True,
+        total=total_segments,
     )
     for name, text_raw, wave in iterator:
         mels = preprocess(wave).to(device)
@@ -329,7 +326,3 @@ def audio_list(path, wavdir, model_config):
                 [numpy.zeros([pad_start]), wave, numpy.zeros([pad_end])], axis=0
             )
             yield name, phonemes, wave
-
-
-if __name__ == "__main__":
-    main()

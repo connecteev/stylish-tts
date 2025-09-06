@@ -89,6 +89,10 @@ class DatasetConfig(BaseModel):
     Dataset configuration parameters.
     """
 
+    path: str = Field(
+        ...,
+        description="Root path for dataset. All other paths in this section are relative to it.",
+    )
     train_data: str = Field(..., description="Path to the training data list.")
     val_data: str = Field(..., description="Path to the validation data list.")
     wav_path: str = Field(..., description="Directory containing WAV files.")
@@ -99,6 +103,10 @@ class DatasetConfig(BaseModel):
     alignment_path: str = Field(
         ...,
         description="Path to the precomputed alignment safetensor file for your segments.",
+    )
+    alignment_model_path: str = Field(
+        ...,
+        description="Path to the trained alignment model used for aligning your segments.",
     )
 
 
@@ -394,7 +402,7 @@ def load_config_yaml(config_path: str) -> Config:
     return Config.model_validate(config_dict)
 
 
-def load_model_config_yaml(config_path: str) -> ModelConfig:
+def load_model_config_yaml(file) -> ModelConfig:
     """
     Load a configuration file from the specified path.
 
@@ -404,10 +412,7 @@ def load_model_config_yaml(config_path: str) -> ModelConfig:
     Returns:
         Config: Parsed configuration object.
     """
-    path = Path(config_path)
-    # Load the YAML file into a dictionary
-    with path.open("r", encoding="utf-8") as file:
-        config_dict = yaml.safe_load(file)
+    config_dict = yaml.safe_load(file)
 
     # Parse and validate the configuration dictionary
     return ModelConfig.model_validate(config_dict)

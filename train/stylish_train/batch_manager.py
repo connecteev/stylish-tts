@@ -35,7 +35,7 @@ class BatchManager:
         epoch: int,
         train,
     ):
-        self.train_path: str = dataset_config.train_data
+        self.train_path: str = train.data_path(dataset_config.train_data)
         self.probe_batch_max: int = probe_batch_max
         self.log_dir: str = log_dir
         self.device: str = device
@@ -49,11 +49,11 @@ class BatchManager:
             exit()
         self.dataset: FilePathDataset = FilePathDataset(
             data_list=train_list,
-            root_path=dataset_config.wav_path,
+            root_path=train.data_path(dataset_config.wav_path),
             text_cleaner=text_cleaner,
             model_config=train.model_config,
-            pitch_path=dataset_config.pitch_path,
-            alignment_path=dataset_config.alignment_path,
+            pitch_path=train.data_path(dataset_config.pitch_path),
+            alignment_path=train.data_path(dataset_config.alignment_path),
             duration_processor=train.duration_processor,
         )
         time_bins, time_per_bin = self.dataset.time_bins()
