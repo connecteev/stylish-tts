@@ -108,13 +108,15 @@ class Stage:
             config.discriminators,
             train,
         )
-        result, audio = self.train_fn(batch, model, train, probing)
+        result, target_spec, pred_spec = self.train_fn(batch, model, train, probing)
         optimizer_step(self.optimizer, config.train_models)
         if len(config.discriminators) > 0:
-            audio_gt = batch.audio_gt.unsqueeze(1)
-            audio = audio.detach()
+            # audio_gt = batch.audio_gt.unsqueeze(1)
+            # audio = audio.detach()
             train.stage.optimizer.zero_grad()
-            d_loss = train.discriminator_loss(audio_gt, audio, config.discriminators)
+            d_loss = train.discriminator_loss(
+                target_list=target_spec, pred_list=pred_spec, used=config.discriminators
+            )
             train.accelerator.backward(d_loss * math.sqrt(batch.text.shape[0]))
             optimizer_step(self.optimizer, config.discriminators)
             train.stage.optimizer.zero_grad()
@@ -158,7 +160,7 @@ class Stage:
                 logs.append(next_log)
                 samples = [
                     (i, sample_map[item])
-                    for i, item in enumerate(inputs[8])
+                    for i, item in enumerate(inputs[3])
                     if item in sample_map
                 ]
 
@@ -195,11 +197,8 @@ class Stage:
                             )
                             if self.name != "duration":
                                 # write mel
-                                audio_pred_cpu = (
-                                    audio_out[inputs_index].squeeze(0).cpu().float()
-                                )
-                                to_mel_cpu = train.to_mel.to("cpu")
-                                mel_pred_tensor = to_mel_cpu(audio_pred_cpu)
+                                audio_pred = audio_out[inputs_index].squeeze(0).float()
+                                mel_pred_tensor = train.to_mel(audio_pred).cpu()
                                 mel_pred_log = torch.log(
                                     torch.clamp(mel_pred_tensor, min=1e-5)
                                 )
@@ -227,7 +226,11 @@ class Stage:
                             )
                             if self.name != "duration":
                                 try:
-                                    mel_gt_np = batch.mel[inputs_index].cpu().numpy()
+                                    mel_gt_np = (
+                                        train.to_mel(audio_gt[inputs_index])
+                                        .cpu()
+                                        .numpy()
+                                    )
                                     fig_mel_gt = plot_spectrogram_to_figure(
                                         mel_gt_np, title="GT Mel"
                                     )
@@ -278,7 +281,7 @@ class Stage:
                         progress_bar.set_postfix({"loss": f"{interim.total():.3f}"})
 
             except Exception as e:
-                path = inputs[8]
+                path = inputs[3]
                 progress_bar.clear() if progress_bar is not None else None
                 train.logger.error(f"Validation failed {path}: {e}")
                 traceback.print_exc()
@@ -299,14 +302,8 @@ batch_names = [
     "audio_gt",
     "text",
     "text_length",
-    "ref_text",
-    "ref_length",
-    "mel",
-    "mel_length",
-    "ref_mel",
     "path",
     "pitch",
-    "align_mel",
     "alignment",
 ]
 

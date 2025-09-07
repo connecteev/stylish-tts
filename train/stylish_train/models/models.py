@@ -13,6 +13,7 @@ from .text_style_encoder import TextStyleEncoder
 from .mel_style_encoder import MelStyleEncoder
 from .pitch_energy_predictor import PitchEnergyPredictor
 from .speech_predictor import SpeechPredictor
+from multi_spectrogram import multi_spectrogram_count
 
 from munch import Munch
 
@@ -36,23 +37,35 @@ def build_model(model_config: ModelConfig):
 
     pitch_energy_predictor = PitchEnergyPredictor(
         style_dim=model_config.style_dim,
-        inter_dim=model_config.inter_dim,
+        inter_dim=model_config.pitch_energy_predictor.inter_dim,
         text_config=model_config.text_encoder,
         style_config=model_config.style_encoder,
         duration_config=model_config.duration_predictor,
         pitch_energy_config=model_config.pitch_energy_predictor,
     )
 
-    pe_text_encoder = TextEncoder(inter_dim=512, config=model_config.text_encoder)
-    pe_text_style_encoder = TextStyleEncoder(512, 64, model_config.style_encoder)
-    pe_mel_style_encoder = MelStyleEncoder(80, 64, 384, True)
+    pe_text_encoder = TextEncoder(
+        inter_dim=model_config.pitch_energy_predictor.inter_dim,
+        config=model_config.text_encoder,
+    )
+    pe_text_style_encoder = TextStyleEncoder(
+        model_config.pitch_energy_predictor.inter_dim,
+        model_config.style_dim,
+        model_config.style_encoder,
+    )
+    pe_mel_style_encoder = MelStyleEncoder(
+        model_config.n_mels,
+        model_config.style_dim,
+        model_config.mel_style_encoder.max_channels,
+        model_config.mel_style_encoder.skip_downsample,
+    )
 
     nets = Munch(
         text_aligner=text_aligner,
         duration_predictor=duration_predictor,
         pitch_energy_predictor=pitch_energy_predictor,
         speech_predictor=SpeechPredictor(model_config),
-        mrd=MultiResolutionDiscriminator(),
+        mrd=MultiResolutionDiscriminator(discriminator_count=multi_spectrogram_count),
         pe_text_encoder=pe_text_encoder,
         pe_text_style_encoder=pe_text_style_encoder,
         pe_mel_style_encoder=pe_mel_style_encoder,

@@ -1,35 +1,60 @@
+import os.path as osp
 import click
 import importlib.resources
-import stylish_lib.config
+from stylish_lib.config_loader import load_config_yaml, load_model_config_yaml
+import config
 
 
-def get_configs(config_path, model_path):
-    if len(model_path) == 0:
-        f = importlib.resources.open_text(stylish_lib.config, "model.yml")
+def get_config(config_path):
+    if osp.exists(config_path):
+        config = load_config_yaml(config_path)
     else:
-        f = open(model_path, "r")
+        # TODO: we may be able to pull it out of the model if a model is passed in instead
+        logger.error(f"Config file not found at {config_path}")
+        exit(1)
+    return config
 
 
-@click.group()
+def get_model_config(model_config_path):
+    if len(model_config_path) == 0:
+        path = importlib.resources.files(config) / "model.yml"
+        f_model = path.open("r", encoding="utf-8")
+    else:
+        if osp.exists(model_config_path):
+            f_model = open(model_config_path, "r", encoding="utf-8")
+        else:
+            logger.error(f"Config file not found at {model_config_path}")
+            exit(1)
+    result = load_model_config_yaml(f_model)
+    f_model.close()
+    return result
+
+
+##############################################################################
+
+
+@click.group("stylish-train")
 def cli():
+    """Prepare a dataset, train a model, or convert a model to ONNX:
+
+    In order to train, first you `train-align` to create an alignment model, `align` to use that model to generate alignments, `pitch` to generate pitch estimation for the dataset. At this point, as long as your dataset does not change, you do not need to re-run any of these stages again.
+
+    Once you have pre-cached alignments and pitches, you can `train` your model, and finally `convert` your model to ONNX for inference.
+
+    """
     pass
 
 
-@cli.group("dataprep", short_help="Utilities for preparing a dataset for training")
-def dataprep():
-    pass
+##### train-align #####
 
 
-@dataprep.command(
+@cli.command(
     "train-align",
     short_help="Train an alignment model to use for pre-caching alignments.",
 )
-@click.option(
-    "-c",
-    "--config",
+@click.argument(
     "config_path",
     type=str,
-    help="Path to config file (use config/config.yml as a template)",
 )
 @click.option(
     "-mc",
@@ -39,9 +64,7 @@ def dataprep():
     type=str,
     help="Model configuration (optional), defaults to known-good model parameters.",
 )
-@click.option(
-    "--out", type=str, help="Output directory for logs, checkpoints, and models"
-)
+@click.option("--out", type=str, help="Output directory for logs and checkpoints")
 @click.option(
     "--checkpoint",
     default="",
@@ -54,26 +77,66 @@ def dataprep():
     is_flag=True,
     help="If loading a checkpoint, do not skip epochs and data.",
 )
-@click.argument(
-    "out-file",
-    "out_file",
-    required=True,
-    type=str,
-    help="Output filename for resulting alignment model.",
-)
-def train_align(*args, **kwargs):
-    print(args, kwargs)
+def train_align(config_path, model_config_path, out, checkpoint, reset_stage):
+    """Train alignment model
+
+    <config_path> is your main configuration file and the resulting alignment model will be stored at <path>/<alignment_model_path> as specified in the dataset section.
+    """
+    print("Train alignment...")
+    config = get_config(config_path)
+    model_config = get_model_config(model_config_path)
+    from train import train_model
+
+    train_model(
+        config,
+        model_config,
+        out,
+        "alignment",
+        checkpoint,
+        reset_stage,
+        config_path,
+        model_config_path,
+    )
 
 
-@dataprep.command(
+##### align #####
+
+
+@cli.command(
     short_help="Use a pretrained alignment model to create a cache of alignments for training."
 )
-@click.option(
-    "-c",
-    "--config",
+@click.argument(
     "config_path",
     type=str,
-    help="Path to config file (use config/config.yml as a template)",
+)
+@click.option(
+    "-mc",
+    "--model-config",
+    "model_config_path",
+    default="",
+    type=str,
+    help="Model configuration (optional), defaults to known-good model parameters.",
+)
+def align(config_path, model_config_path):
+    """Align dataset
+
+    <config_path> is your main configuration file. Use an alignment model to precache the alignments for your dataset. <config_path> is your main configuration file and the alignment model will be loaded from <path>/<alignment_model_path>. The alignments are saved to <path>/<alignment_path> as specified in the dataset section. 'scores_val.txt' and 'scores_train.txt' containing confidence scores for each segment will be written to the dataset <path>.
+    """
+    print("Calculate alignment...")
+    config = get_config(config_path)
+    model_config = get_model_config(model_config_path)
+    from dataprep.align_text import align_text
+
+    align_text(config, model_config)
+
+
+##### pitch #####
+
+
+@cli.command(short_help="Create a cache of pitches to use for training.")
+@click.argument(
+    "config_path",
+    type=str,
 )
 @click.option(
     "-mc",
@@ -84,53 +147,40 @@ def train_align(*args, **kwargs):
     help="Model configuration (optional), defaults to known-good model parameters.",
 )
 @click.option(
-    "--model",
-    type=str,
-    help="Pretrained alignment model created previously with the train-align command.",
-)
-@click.argument(
-    "out-file",
-    "out_file",
-    type=str,
-    help="Output filename for cached alignments (defaults to the path in alignment_path from the config file).",
-)
-def align(*args, **kwargs):
-    print(args, kwargs)
-
-
-@dataprep.command(short_help="Create a cache of pitches to use for training.")
-@click.option(
-    "-c",
-    "--config",
-    "config_path",
-    type=str,
-    help="Path to config file (use config/config.yml as a template)",
+    "-k",
+    "--workers",
+    default=8,
+    type=int,
+    help="Number of worker threads to use for calculation",
 )
 @click.option(
-    "-mc",
-    "--model-config",
-    "model_config_path",
-    default="",
+    "--method",
+    default="pyworld",
     type=str,
-    help="Model configuration (optional), defaults to known-good model parameters.",
+    help="Method used to calculate. 'pyworld' (CPU based, traditional), 'rmvpe' (GPU based, ML model)",
 )
-@click.argument(
-    "out-file",
-    "out_file",
-    type=str,
-    help="Output filename for cached pitches (defaults to the path in pitch_path from the config file).",
-)
-def pitch(*args, **kwargs):
-    print(args, kwargs)
+def pitch(config_path, model_config_path, workers, method):
+    """Calculate pitch for a dataset
+
+    <config_path> is your main configuration file. Calculates the fundamental frequencies for every segment in your dataset. The pitches are saved to the <path>/<pitch_path> from the dataset section of the config file.
+    """
+    if method != "pyworld" and method != "rmvpe":
+        exit("Pitch calculation must either be pyworld or rmvpe")
+    print("Calculate pitch...")
+    config = get_config(config_path)
+    model_config = get_model_config(model_config_path)
+    from dataprep.pitch_extractor import calculate_pitch
+
+    calculate_pitch(config, model_config, method, workers)
+
+
+##### train #####
 
 
 @cli.command(short_help="Train a model using the specified configuration.")
-@click.option(
-    "-c",
-    "--config",
+@click.argument(
     "config_path",
     type=str,
-    help="Path to config file (use config/config.yml as a template)",
 )
 @click.option(
     "-mc",
@@ -147,7 +197,7 @@ def pitch(*args, **kwargs):
     "--stage",
     default="acoustic",
     type=str,
-    help="Training stage should be one of 'acoustic', 'textual'.",
+    help="Training stage should be one of 'acoustic', 'textual', 'style', 'duration'.",
 )
 @click.option(
     "--checkpoint",
@@ -161,24 +211,112 @@ def pitch(*args, **kwargs):
     is_flag=True,
     help="If loading a checkpoint, do not skip epochs and data.",
 )
-def train(**kwargs):
-    print(kwargs)
+def train(config_path, model_config_path, out, stage, checkpoint, reset_stage):
+    """Train a model
+
+    <config_path> is your main configuration file. Train a Stylish TTS model. You must have already precached alignment and pitch information for the dataset. Stage should be 'acoustic' to begin with unless you are loading a checkpoint.
+    """
+    print("Train model...")
+    config = get_config(config_path)
+    model_config = get_model_config(model_config_path)
+    from train import train_model
+
+    train_model(
+        config,
+        model_config,
+        out,
+        stage,
+        checkpoint,
+        reset_stage,
+        config_path,
+        model_config_path,
+    )
+
+
+##### convert #####
 
 
 @cli.command(short_help="Convert a model to ONNX for use in inference.")
-@click.option(
-    "--checkpoint", type=str, help="Path to a model checkpoint to load for conversion"
-)
 @click.argument(
-    "out-file",
-    "out_file",
+    "config_path",
+    type=str,
+)
+@click.option(
+    "-mc",
+    "--model-config",
+    "model_config_path",
+    default="",
+    type=str,
+    help="Model configuration (optional), defaults to known-good model parameters.",
+)
+@click.option(
+    "--duration", required=True, type=str, help="Path to write duration model"
+)
+@click.option("--speech", required=True, type=str, help="Path to write speech model")
+@click.option(
+    "--checkpoint",
     required=True,
     type=str,
-    help="Output filename for resulting ONNX model.",
+    help="Path to a model checkpoint to load for conversion",
 )
-def convert(*args, **kwargs):
-    print(args, kwargs)
+def convert(config_path, model_config_path, duration, speech, checkpoint):
+    """Convert a model to ONNX
 
+    The converted model will be saved in <out-file>.
+    """
+    print("Convert to ONNX...")
+    config = get_config(config_path)
+    model_config = get_model_config(model_config_path)
+
+    from train_context import Manifest
+    from convert_to_onnx import convert_to_onnx
+    from models.models import build_model
+    from utils import DurationProcessor
+    from accelerate import Accelerator
+    from accelerate import DistributedDataParallelKwargs
+    from losses import DiscriminatorLoss
+
+    duration_processor = DurationProcessor(
+        class_count=model_config.duration_predictor.duration_classes,
+        max_dur=model_config.duration_predictor.max_duration,
+    ).to(config.training.device)
+    manifest = Manifest()
+
+    ddp_kwargs = DistributedDataParallelKwargs(
+        broadcast_buffers=False, find_unused_parameters=True
+    )
+    accelerator = Accelerator(
+        project_dir=".",
+        split_batches=True,
+        kwargs_handlers=[ddp_kwargs],
+        mixed_precision=config.training.mixed_precision,
+        step_scheduler_with_optimizer=False,
+    )
+    model = build_model(model_config)
+    for key in model:
+        model[key] = accelerator.prepare(model[key])
+        model[key].to(config.training.device)
+
+    disc_loss = DiscriminatorLoss(mrd=model.mrd)
+
+    accelerator.register_for_checkpointing(config)
+    accelerator.register_for_checkpointing(model_config)
+    accelerator.register_for_checkpointing(manifest)
+    accelerator.register_for_checkpointing(disc_loss)
+
+    accelerator.load_state(checkpoint)
+
+    convert_to_onnx(
+        model_config,
+        duration,
+        speech,
+        model,
+        config.training.device,
+        duration_processor,
+    )
+
+
+##############################################################################
 
 if __name__ == "__main__":
     cli()

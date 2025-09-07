@@ -89,6 +89,10 @@ class DatasetConfig(BaseModel):
     Dataset configuration parameters.
     """
 
+    path: str = Field(
+        ...,
+        description="Root path for dataset. All other paths in this section are relative to it.",
+    )
     train_data: str = Field(..., description="Path to the training data list.")
     val_data: str = Field(..., description="Path to the validation data list.")
     wav_path: str = Field(..., description="Directory containing WAV files.")
@@ -99,6 +103,10 @@ class DatasetConfig(BaseModel):
     alignment_path: str = Field(
         ...,
         description="Path to the precomputed alignment safetensor file for your segments.",
+    )
+    alignment_model_path: str = Field(
+        ...,
+        description="Path to the trained alignment model used for aligning your segments.",
     )
 
 
@@ -120,8 +128,7 @@ class LossWeightConfig(BaseModel):
     )
     style: float = Field(..., description="Weight for style reconstruction loss.")
     mag: float = Field(..., description="Weight for magnitude loss.")
-    phase_x: float = Field(..., description="Weight for phase (y) loss.")
-    phase_y: float = Field(..., description="Weight for phase (x) loss.")
+    phase: float = Field(..., description="Weight for phase (y) loss.")
     confidence: float = Field(..., description="Weight for alignment confidence")
     align_loss: float = Field(..., description="Weight for alignment loss")
     discriminator: float = Field(..., description="Weight for discriminator loss")
@@ -165,6 +172,28 @@ class DecoderConfig(BaseModel):
     residual_dim: int = Field(..., description="Residual shortcut dimension")
 
 
+class GeneratorConfig(BaseModel):
+    """
+    Configuration for generator.
+    """
+
+    type: Literal["freegan"] = "freegan"
+    input_dim: int = Field(..., description="Input dimension expected from decoder")
+    hidden_dim: int = Field(..., description="Hidden dimension, ideally n_fft // 2 + 1")
+    conv_intermediate_dim: int = Field(
+        ..., description="Internal dimension for convnext blocks"
+    )
+    io_conv_kernel_size: int = Field(
+        ..., description="Kernel size for input/output convolutions"
+    )
+    conformer_layers: int = Field(
+        ..., description="Number of conformer blocks each for phase/amp"
+    )
+    conv_layers: int = Field(
+        ..., description="Number of convnext block each for phase/amp"
+    )
+
+
 class RingformerGeneratorConfig(BaseModel):
     """
     Configuration for Ringformer generator.
@@ -177,8 +206,9 @@ class RingformerGeneratorConfig(BaseModel):
     upsample_rates: List[int] = Field(
         ..., description="Upsample rates for each upsampling layer."
     )
-    upsample_initial_channel: int = Field(
-        ..., description="Initial channel count for upsampling."
+    input_dim: int = Field(..., description="Initial channel count for upsampling.")
+    upsample_last_channel: int = Field(
+        ..., description="Last channel count before istft"
     )
     resblock_dilation_sizes: List[List[int]] = Field(
         ..., description="Dilation sizes for residual blocks."
@@ -218,6 +248,19 @@ class TextEncoderConfig(BaseModel):
     dropout: float = Field(..., description="Dropout for internal layers")
 
 
+class MelStyleEncoderConfig(BaseModel):
+    """
+    Style encoder configuration parameters.
+    """
+
+    max_channels: int = Field(
+        ..., description="Maximum number of channels during downsampling"
+    )
+    skip_downsample: bool = Field(
+        ..., description="Skip one of the downsample layers to allow smaller mel length"
+    )
+
+
 class StyleEncoderConfig(BaseModel):
     """
     Style encoder configuration parameters.
@@ -232,8 +275,14 @@ class DurationPredictorConfig(BaseModel):
     """
 
     n_layer: int = Field(..., description="Number of layers in the prosody predictor.")
-    max_dur: int = Field(..., description="Maximum duration of a single phoneme.")
+    duration_classes: int = Field(
+        ..., description="Number of classes used to predict duration."
+    )
+    max_duration: int = Field(..., description="Maximum duration of a single phoneme.")
     dropout: float = Field(..., description="Dropout rate for the prosody predictor.")
+    last_dropout: float = Field(
+        ..., description="Dropout rate just before final linear layer."
+    )
 
 
 class PitchEnergyPredictorConfig(BaseModel):
@@ -241,7 +290,12 @@ class PitchEnergyPredictorConfig(BaseModel):
     Prosody predictor configuration parameters.
     """
 
-    dropout: float = Field(..., description="Dropout rate for the prosody predictor.")
+    inter_dim: int = Field(
+        ..., description="Interchange dimension for pitch-energy prediction"
+    )
+    dropout: float = Field(
+        ..., description="Dropout rate for the pitch-energy predictor."
+    )
 
 
 class SlmConfig(BaseModel):
@@ -299,11 +353,14 @@ class ModelConfig(BaseModel):
         ..., description="Configuration for the text aligner component."
     )
     decoder: DecoderConfig = Field(..., description="Decoder configuration parameters.")
-    generator: Union[RingformerGeneratorConfig,] = Field(
+    generator: Union[RingformerGeneratorConfig, GeneratorConfig] = Field(
         ..., description="Generator (vocoder) configuration parameters."
     )
     text_encoder: TextEncoderConfig = Field(
         ..., description="Text encoder configuration parameters."
+    )
+    mel_style_encoder: MelStyleEncoderConfig = Field(
+        ..., description="Acoustic style encoder configuration parameters."
     )
     style_encoder: StyleEncoderConfig = Field(
         ..., description="Style encoder configuration parameters."
@@ -345,7 +402,7 @@ def load_config_yaml(config_path: str) -> Config:
     return Config.model_validate(config_dict)
 
 
-def load_model_config_yaml(config_path: str) -> ModelConfig:
+def load_model_config_yaml(file) -> ModelConfig:
     """
     Load a configuration file from the specified path.
 
@@ -355,10 +412,7 @@ def load_model_config_yaml(config_path: str) -> ModelConfig:
     Returns:
         Config: Parsed configuration object.
     """
-    path = Path(config_path)
-    # Load the YAML file into a dictionary
-    with path.open("r", encoding="utf-8") as file:
-        config_dict = yaml.safe_load(file)
+    config_dict = yaml.safe_load(file)
 
     # Parse and validate the configuration dictionary
     return ModelConfig.model_validate(config_dict)

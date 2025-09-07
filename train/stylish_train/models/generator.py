@@ -11,26 +11,22 @@ from .stft import STFT
 from einops import rearrange
 
 import math
-from scipy.signal import get_window
 from utils import DecoderPrediction
 from .ada_norm import AdaptiveGeneratorBlock
-
+from .ada_norm import AdaptiveLayerNorm
+from .common import get_padding
 
 import numpy as np
 
 
 class TorchSTFT(torch.nn.Module):
-    def __init__(
-        self, device, filter_length=800, hop_length=200, win_length=800, window="hann"
-    ):
+    def __init__(self, filter_length=800, hop_length=200, win_length=800):
         super().__init__()
         self.filter_length = filter_length
         self.hop_length = hop_length
         self.win_length = win_length
-        self.device = device
-        self.window = torch.from_numpy(
-            get_window(window, win_length, fftbins=True).astype(np.float32)
-        ).to(device)
+        window = torch.hann_window(win_length)
+        self.register_buffer("window", window, persistent=False)
 
     def transform(self, input_data):
         forward_transform = torch.stft(
@@ -65,20 +61,21 @@ def padDiff(x):
     )
 
 
-class Generator(torch.nn.Module):
+class UpsampleGenerator(torch.nn.Module):
     def __init__(
         self,
         style_dim,
         resblock_kernel_sizes,
         upsample_rates,
         upsample_initial_channel,
+        upsample_last_channel,
         resblock_dilation_sizes,
         upsample_kernel_sizes,
         gen_istft_n_fft,
         gen_istft_hop_size,
         sample_rate,
     ):
-        super(Generator, self).__init__()
+        super(UpsampleGenerator, self).__init__()
         self.num_kernels = len(resblock_kernel_sizes)
         self.num_upsamples = len(upsample_rates)
         self.upsample_rates = upsample_rates
@@ -166,7 +163,9 @@ class Generator(torch.nn.Module):
 
         self.conformers = nn.ModuleList()
         self.post_n_fft = self.gen_istft_n_fft
-        self.conv_post = weight_norm(Conv1d(128, self.post_n_fft + 2, 7, 1, padding=3))
+        self.conv_post = weight_norm(
+            Conv1d(upsample_last_channel, self.post_n_fft + 2, 7, 1, padding=3)
+        )
         for i in range(len(self.ups)):
             ch = upsample_initial_channel // (2**i)
             self.conformers.append(
@@ -188,8 +187,6 @@ class Generator(torch.nn.Module):
         self.conv_post.apply(init_weights)
         self.reflection_pad = torch.nn.ReflectionPad1d((1, 0))
         self.stft = TorchSTFT(
-            # TODO: Fix hardcoded device
-            device="cuda",
             filter_length=self.gen_istft_n_fft,
             hop_length=self.gen_istft_hop_size,
             win_length=self.gen_istft_n_fft,
@@ -237,13 +234,13 @@ class Generator(torch.nn.Module):
         x = x + (1 / self.alphas[i + 1]) * (torch.sin(self.alphas[i + 1] * x) ** 2)
         x = self.conv_post(x)
 
-        spec = x[:, : self.post_n_fft // 2 + 1, :]
-        spec = spec.abs() ** 3 + 1e-9
+        logamp = x[:, : self.post_n_fft // 2 + 1, :]
+        spec = torch.exp(logamp)
         phase = x[:, self.post_n_fft // 2 + 1 :, :]
         x_phase = torch.cos(phase)
         y_phase = torch.sin(phase)
         out = self.stft.inverse(spec, x_phase, y_phase).to(x.device)
-        return DecoderPrediction(audio=out, magnitude=spec, x=x_phase, y=y_phase)
+        return DecoderPrediction(audio=out, magnitude=logamp, phase=phase)
 
 
 # The following code was adapted from: https://github.com/nii-yamagishilab/project-CURRENNT-scripts/tree/master/waveform-modeling/project-NSF-v2-pretrained
@@ -495,3 +492,187 @@ class SourceModuleHnNSF(torch.nn.Module):
         # source for noise branch, in the same shape as uv
         noise = torch.randn_like(uv) * self.sine_amp / 3
         return sine_merge, noise, uv
+
+
+class Generator(torch.nn.Module):
+    def __init__(self, *, style_dim, n_fft, win_length, hop_length, config):
+        super(Generator, self).__init__()
+
+        self.amp_input_conv = Conv1d(
+            config.input_dim,
+            config.hidden_dim,
+            config.io_conv_kernel_size,
+            1,
+            padding=get_padding(config.io_conv_kernel_size, 1),
+        )
+
+        self.amp_output_conv = Conv1d(
+            config.hidden_dim,
+            n_fft // 2 + 1,
+            config.io_conv_kernel_size,
+            1,
+            padding=get_padding(config.io_conv_kernel_size, 1),
+        )
+
+        self.phase_output_real_conv = Conv1d(
+            config.hidden_dim,
+            n_fft // 2 + 1,
+            config.io_conv_kernel_size,
+            1,
+            padding=get_padding(config.io_conv_kernel_size, 1),
+        )
+        self.phase_output_imag_conv = Conv1d(
+            config.hidden_dim,
+            n_fft // 2 + 1,
+            config.io_conv_kernel_size,
+            1,
+            padding=get_padding(config.io_conv_kernel_size, 1),
+        )
+
+        self.amp_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
+        self.phase_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
+        self.phase_conformer = Conformer(
+            dim=config.hidden_dim,
+            style_dim=style_dim,
+            depth=config.conformer_layers,
+            attn_dropout=0.2,
+            ff_dropout=0.2,
+            conv_dropout=0.2,
+        )
+        self.phase_convnext = nn.ModuleList(
+            [
+                ConvNeXtBlock(
+                    dim=config.hidden_dim,
+                    intermediate_dim=config.conv_intermediate_dim,
+                    style_dim=style_dim,
+                )
+                for _ in range(config.conv_layers)
+            ]
+        )
+        self.amp_conformer = Conformer(
+            dim=config.hidden_dim,
+            style_dim=style_dim,
+            depth=config.conformer_layers,
+            attn_dropout=0.2,
+            ff_dropout=0.2,
+            conv_dropout=0.2,
+        )
+        self.amp_convnext = nn.ModuleList(
+            [
+                ConvNeXtBlock(
+                    dim=config.hidden_dim,
+                    intermediate_dim=config.conv_intermediate_dim,
+                    style_dim=style_dim,
+                )
+                for _ in range(config.conv_layers)
+            ]
+        )
+        self.amp_final_layer_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
+        self.phase_final_layer_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
+        self.apply(self._init_weights)
+        self.stft = TorchSTFT(
+            filter_length=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
+        )
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Conv1d):  # (nn.Conv1d, nn.Linear)):
+            nn.init.trunc_normal_(m.weight, std=0.02)
+            nn.init.constant_(m.bias, 0)
+
+    def forward(self, *, mel, style, pitch, energy):
+        logamp = self.amp_input_conv(mel)
+        logamp = logamp.transpose(1, 2)
+        logamp = self.amp_norm(logamp)
+        logamp = self.amp_conformer(logamp, style)
+        logamp = logamp.transpose(1, 2)
+        for conv_block in self.amp_convnext:
+            logamp = conv_block(logamp, style)
+
+        logamp = logamp.transpose(1, 2)
+        phase = logamp
+        logamp = self.amp_final_layer_norm(logamp)
+        logamp = logamp.transpose(1, 2)
+        logamp = self.amp_output_conv(logamp)
+
+        phase = self.phase_norm(phase)
+        phase = self.phase_conformer(phase, style)
+        phase = phase.transpose(1, 2)
+        for conv_block in self.phase_convnext:
+            phase = conv_block(phase, style)
+        phase = phase.transpose(1, 2)
+        phase = self.phase_final_layer_norm(phase)
+        phase = phase.transpose(1, 2)
+        real = self.phase_output_real_conv(phase)
+        imag = self.phase_output_imag_conv(phase)
+
+        phase = torch.atan2(imag, real)
+
+        logamp = F.pad(logamp, pad=(0, 1), mode="replicate")
+        phase = F.pad(phase, pad=(0, 1), mode="replicate")
+
+        spec = torch.exp(logamp)
+        x = torch.cos(phase)
+        y = torch.sin(phase)
+
+        audio = self.stft.inverse(spec, x, y).to(x.device)
+        audio = torch.tanh(audio)
+        return DecoderPrediction(
+            audio=audio,
+            magnitude=logamp,
+            phase=phase,
+        )
+
+
+class ConvNeXtBlock(torch.nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        intermediate_dim: int,
+        style_dim,
+    ):
+        super().__init__()
+        self.dwconv = torch.nn.Conv1d(
+            dim, dim, kernel_size=7, padding=3, groups=dim
+        )  # depthwise conv
+
+        self.norm = AdaptiveLayerNorm(style_dim, dim, eps=1e-6)
+        self.pwconv1 = torch.nn.Linear(
+            dim, intermediate_dim
+        )  # pointwise/1x1 convs, implemented with linear layers
+        self.snake = torch.nn.Parameter(torch.ones(1, 1, intermediate_dim))
+        self.grn = GRN(intermediate_dim)
+        self.pwconv2 = torch.nn.Linear(intermediate_dim, dim)
+
+    def act(self, x):
+        return x + (1 / self.snake) * (torch.sin(self.snake * x) ** 2)
+
+    def forward(self, x, style):
+        residual = x
+        x = self.dwconv(x)
+        x = x.transpose(1, 2)  # (B, C, T) -> (B, T, C)
+        x = self.norm(x, style)
+        x = self.pwconv1(x)
+        x = self.act(x)
+        x = self.grn(x)
+        x = self.pwconv2(x)
+
+        x = x.transpose(1, 2)  # (B, T, C) -> (B, C, T)
+
+        x = residual + x
+        return x
+
+
+class GRN(torch.nn.Module):
+    """GRN (Global Response Normalization) layer"""
+
+    def __init__(self, dim):
+        super().__init__()
+        self.gamma = torch.nn.Parameter(torch.zeros(1, 1, dim))
+        self.beta = torch.nn.Parameter(torch.zeros(1, 1, dim))
+
+    def forward(self, x):
+        Gx = torch.norm(x, p=2, dim=1, keepdim=True)
+        Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
+        return self.gamma * (x * Nx) + self.beta + x

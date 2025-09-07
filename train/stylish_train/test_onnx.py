@@ -22,31 +22,28 @@ def read_meta_data_onnx(filename, key):
 
 
 @click.command()
-@click.option("--stylish_path", type=str)
-@click.option("--duration_path", type=str)
-@click.option("--model_config_path", type=str)
+@click.option("--speech", type=str)
+@click.option("--duration", type=str)
 @click.option("--text", type=str, help="A list of phonemes")
 @click.option("--combine", type=bool, default=True, help="Combine to one file")
-def main(stylish_path, duration_path, model_config_path, text, combine):
+def main(speech, duration, model_config_path, text, combine):
     texts = [text]
-    # model_config = read_meta_data_onnx(stylish_path, "model_config")
-    # assert (
-    #     model_config
-    # ), "model_config metadata not found. Please rerun ONNX conversion."
-    # model_config = ModelConfig.model_validate_json(model_config)
-    model_config = load_model_config_yaml(model_config_path)
+    model_config = read_meta_data_onnx(speech, "model_config")
+    assert (
+        model_config
+    ), "model_config metadata not found. Please rerun ONNX conversion."
+    model_config = ModelConfig.model_validate_json(model_config)
+    # model_config = load_model_config_yaml(model_config_path)
     text_cleaner = TextCleaner(model_config.symbol)
-    # dur_session = ai_edge_torch.load(duration_path)
     dur_session = ort.InferenceSession(
-        duration_path,
+        duration,
         providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
     )
     duration_processor = DurationProcessor(16, 50)
     session = ort.InferenceSession(
-        stylish_path,
+        speech,
         providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
     )
-    # session = ai_edge_torch.load(stylish_path)
     samples = []
 
     start = perf_counter()

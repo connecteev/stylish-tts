@@ -16,7 +16,6 @@ class ProsodyEncoder(nn.Module):
         dropout=0.1,
         n_heads=2,
         kernel_size=1,
-        norm_window_length=17,
         **kwargs,
     ):
         super().__init__()

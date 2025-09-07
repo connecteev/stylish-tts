@@ -21,15 +21,14 @@ class PitchEnergyPredictor(torch.nn.Module):
         super().__init__()
         self.prosody_encoder = ProsodyEncoder(
             sty_dim=style_dim,
-            d_model=512,
+            d_model=inter_dim,
             nlayers=3,
             dropout=0.2,
         )
 
-        d_hid = inter_dim
         dropout = pitch_energy_config.dropout
 
-        cross_channels = 512 + style_dim
+        cross_channels = inter_dim + style_dim
         self.query_norm = AdaptiveLayerNorm(style_dim, cross_channels)
         self.key_norm = AdaptiveLayerNorm(style_dim, cross_channels)
         self.cross_attention = MultiHeadAttention(
@@ -57,7 +56,10 @@ class PitchEnergyPredictor(torch.nn.Module):
         self.F0 = torch.nn.ModuleList(
             [
                 AdaptiveDecoderBlock(
-                    512 + style_dim, 512 + style_dim, style_dim, dropout_p=dropout
+                    inter_dim + style_dim,
+                    inter_dim + style_dim,
+                    style_dim,
+                    dropout_p=dropout,
                 )
                 for _ in range(3)
             ]
@@ -66,14 +68,17 @@ class PitchEnergyPredictor(torch.nn.Module):
         self.N = torch.nn.ModuleList(
             [
                 AdaptiveDecoderBlock(
-                    512 + style_dim, 512 + style_dim, style_dim, dropout_p=dropout
+                    inter_dim + style_dim,
+                    inter_dim + style_dim,
+                    style_dim,
+                    dropout_p=dropout,
                 )
                 for _ in range(3)
             ]
         )
 
-        self.F0_proj = torch.nn.Conv1d(512 + style_dim, 1, 1, 1, 0)
-        self.N_proj = torch.nn.Conv1d(512 + style_dim, 1, 1, 1, 0)
+        self.F0_proj = torch.nn.Conv1d(inter_dim + style_dim, 1, 1, 1, 0)
+        self.N_proj = torch.nn.Conv1d(inter_dim + style_dim, 1, 1, 1, 0)
 
     def compute_cross(self, text_encoding, alignment, style, text_mask):
         """

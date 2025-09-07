@@ -19,6 +19,9 @@ from torch.utils.tensorboard.writer import SummaryWriter
 from stylish_lib.text_utils import TextCleaner
 import torchaudio
 from utils import DurationProcessor
+from multi_spectrogram import MultiSpectrogram
+from pathlib import Path
+import traceback
 
 
 class Manifest:
@@ -89,6 +92,9 @@ class TrainContext:
         self.logger: logging.Logger = logger
 
         # Losses
+        self.multi_spectrogram = MultiSpectrogram(
+            sample_rate=self.model_config.sample_rate
+        ).to(self.config.training.device)
         self.generator_loss: Optional[GeneratorLoss] = None  # Generator Loss
         self.discriminator_loss: Optional[DiscriminatorLoss] = (
             None  # Discriminator Loss
@@ -100,17 +106,22 @@ class TrainContext:
         self.align_loss: CTCLossWithLabelPriors = CTCLossWithLabelPriors(
             prior_scaling_factor=0.3, blank=model_config.text_encoder.tokens
         )
+        # self.magphase_loss: MagPhaseLoss = MagPhaseLoss(
+        #     n_fft=self.model_config.generator.gen_istft_n_fft,
+        #     hop_length=self.model_config.generator.gen_istft_hop_size,
+        # ).to(self.config.training.device)
         self.magphase_loss: MagPhaseLoss = MagPhaseLoss(
-            n_fft=self.model_config.generator.gen_istft_n_fft,
-            hop_length=self.model_config.generator.gen_istft_hop_size,
+            n_fft=self.model_config.n_fft,
+            hop_length=self.model_config.hop_length,
+            win_length=self.model_config.win_length,
         ).to(self.config.training.device)
         self.duration_loss: DurationLoss = None
 
         self.text_cleaner = TextCleaner(self.model_config.symbol)
-        # TODO: Fix hardcoded value
-        self.duration_processor = DurationProcessor(class_count=16, max_dur=50).to(
-            self.config.training.device
-        )
+        self.duration_processor = DurationProcessor(
+            class_count=self.model_config.duration_predictor.duration_classes,
+            max_dur=self.model_config.duration_predictor.max_duration,
+        ).to(self.config.training.device)
 
         self.to_mel = torchaudio.transforms.MelSpectrogram(
             n_mels=self.model_config.n_mels,
@@ -120,5 +131,16 @@ class TrainContext:
             sample_rate=self.model_config.sample_rate,
         ).to(self.config.training.device)
 
+        self.to_align_mel = torchaudio.transforms.MelSpectrogram(
+            n_mels=80,  # align seems to perform worse on higher n_mels
+            n_fft=self.model_config.n_fft,
+            win_length=self.model_config.win_length,
+            hop_length=self.model_config.hop_length,
+            sample_rate=self.model_config.sample_rate,
+        ).to(self.config.training.device)
+
     def reset_out_dir(self, stage_name):
         self.out_dir = osp.join(self.base_output_dir, stage_name)
+
+    def data_path(self, path: str) -> Path:
+        return Path(self.config.dataset.path) / path

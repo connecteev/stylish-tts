@@ -285,15 +285,14 @@ def leaky_clamp(
 class DecoderPrediction:
     def __init__(
         self,
-        audio=None,
-        x=None,
-        y=None,
-        magnitude=None,
+        *,
+        audio,
+        magnitude,
+        phase,
     ):
         self.audio = audio
-        self.x = x
-        self.y = y
         self.magnitude = magnitude
+        self.phase = phase
 
 
 class DurationProcessor(torch.nn.Module):

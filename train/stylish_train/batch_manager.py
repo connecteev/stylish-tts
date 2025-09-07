@@ -2,7 +2,7 @@ import gc
 import traceback
 import torch
 from typing import Optional, Dict, List
-from meldataset import (
+from dataloader import (
     FilePathDataset,
     build_dataloader,
     get_frame_count,
@@ -35,7 +35,7 @@ class BatchManager:
         epoch: int,
         train,
     ):
-        self.train_path: str = dataset_config.train_data
+        self.train_path: str = train.data_path(dataset_config.train_data)
         self.probe_batch_max: int = probe_batch_max
         self.log_dir: str = log_dir
         self.device: str = device
@@ -49,11 +49,11 @@ class BatchManager:
             exit()
         self.dataset: FilePathDataset = FilePathDataset(
             data_list=train_list,
-            root_path=dataset_config.wav_path,
+            root_path=train.data_path(dataset_config.wav_path),
             text_cleaner=text_cleaner,
             model_config=train.model_config,
-            pitch_path=dataset_config.pitch_path,
-            alignment_path=dataset_config.alignment_path,
+            pitch_path=train.data_path(dataset_config.pitch_path),
+            alignment_path=train.data_path(dataset_config.alignment_path),
             duration_processor=train.duration_processor,
         )
         time_bins, time_per_bin = self.dataset.time_bins()
@@ -74,7 +74,9 @@ class BatchManager:
             )
 
         # Use up 200 MB of VRAM during probing to make our batch size estimates conservative
-        lodestone = torch.zeros([50, 1000, 1000], dtype=torch.float, device=self.device)
+        lodestone = torch.zeros(
+            [50, 1000, 1000], dtype=torch.float, device=train.config.training.device
+        )
         train.stage.reset_batch_sizes()
         batch_size = self.probe_batch_max
         time_keys = sorted(list(self.time_bins.keys()))

@@ -1,6 +1,6 @@
 training:
   # log training data every this number of steps
-  log_interval: 100
+  log_interval: 1000
   # validate and save model every this number of steps
   save_interval: 5000
   # validate model every this number of steps
@@ -25,10 +25,6 @@ training_plan:
     epochs: 10
     probe_batch_max: 16
     lr: 1e-4
-  duration:
-    epochs: 15
-    probe_batch_max: 32
-    lr: 1e-4
   textual:
     # training for duration/pitch/energy from text
     epochs: 10
@@ -39,13 +35,25 @@ training_plan:
     epochs: 20
     probe_batch_max: 64
     lr: 1e-5
+  joint:
+    # Experimental joint training
+    epochs: 10
+    probe_batch_max: 16
+    lr: 1e-4
+  duration:
+    epochs: 15
+    probe_batch_max: 32
+    lr: 1e-4
 
 dataset:
-  train_data: "path/to/your/train-list.txt"
-  val_data: "path/to/your/val-list.txt"
-  wav_path: "path/to/your/wav-files"
-  pitch_path: "path/to/your/pitch.safetensors"
-  alignment_path: "path/to/your/alignment.safetensors"
+  # All paths in this section are relative to the main path
+  path: "path/to/your/dataset"
+  train_data: "train-list.txt"
+  val_data: "val-list.txt"
+  wav_path: "wav-dir"
+  pitch_path: "pitch.safetensors"
+  alignment_path: "alignment.safetensors"
+  alignment_model_path: "alignment_model.safetensors"
 
 validation:
   # Number of samples to generate per validation step
@@ -63,6 +71,7 @@ loss_weight:
   # mel reconstruction loss
   mel: 5
   # generator loss
+  # -- if voice sounds autotuned, try increasing
   generator: 2
   # speech-language model feature matching loss
   slm: 0.2
@@ -71,15 +80,18 @@ loss_weight:
   # energy reconstruction loss
   energy: 1
   # duration loss
+  # -- if voice is too slow and pauses are too long, try increasing this and decreasing the other
   duration: 1
   # duration predictor probability output cross entropy loss
+  # -- if voice is too fast and pauses are too short, try increasing this and decreasing the other
   duration_ce: 1
   # style reconstruction loss
   style: 1
-  # magnitude/phase loss
+  # magnitude loss
   mag: 1
-  phase_x: 1
-  phase_y: 1
+  # phase loss
+  # -- if voice sounds autotuned, try increasing
+  phase: 8
   # confidence for alignment (placeholder)
   confidence: 1
   # alignment loss

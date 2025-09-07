@@ -22,8 +22,10 @@ class DurationPredictor(torch.nn.Module):
             nlayers=duration_config.n_layer,
             dropout=duration_config.dropout,
         )
-        self.dropout = torch.nn.Dropout(0.5)
-        self.duration_proj = LinearNorm(inter_dim + style_dim, duration_config.max_dur)
+        self.dropout = torch.nn.Dropout(duration_config.last_dropout)
+        self.duration_proj = LinearNorm(
+            inter_dim + style_dim, duration_config.duration_classes
+        )
 
     def forward(self, texts, text_lengths):
         encoding, _, _ = self.text_encoder(texts, text_lengths)
