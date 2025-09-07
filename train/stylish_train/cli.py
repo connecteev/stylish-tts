@@ -219,20 +219,82 @@ def train(config_path, model_config_path, out, stage, checkpoint, reset_stage):
 
 @cli.command(short_help="Convert a model to ONNX for use in inference.")
 @click.argument(
-    "out-file",
-    required=True,
+    "config_path",
     type=str,
 )
 @click.option(
-    "--checkpoint", type=str, help="Path to a model checkpoint to load for conversion"
+    "-mc",
+    "--model-config",
+    "model_config_path",
+    default="",
+    type=str,
+    help="Model configuration (optional), defaults to known-good model parameters.",
 )
-def convert(*args, **kwargs):
+@click.option(
+    "--duration", required=True, type=str, help="Path to write duration model"
+)
+@click.option("--speech", required=True, type=str, help="Path to write speech model")
+@click.option(
+    "--checkpoint",
+    required=True,
+    type=str,
+    help="Path to a model checkpoint to load for conversion",
+)
+def convert(config_path, model_config_path, duration, speech, checkpoint):
     """Convert a model to ONNX
 
     The converted model will be saved in <out-file>.
     """
     print("Convert to ONNX...")
-    print(args, kwargs)
+    config = get_config(config_path)
+    model_config = get_model_config(model_config_path)
+
+    from train_context import Manifest
+    from convert_to_onnx import convert_to_onnx
+    from models.models import build_model
+    from utils import DurationProcessor
+    from accelerate import Accelerator
+    from accelerate import DistributedDataParallelKwargs
+    from losses import DiscriminatorLoss
+
+    duration_processor = DurationProcessor(
+        class_count=model_config.duration_predictor.duration_classes,
+        max_dur=model_config.duration_predictor.max_duration,
+    ).to(config.training.device)
+    manifest = Manifest()
+
+    ddp_kwargs = DistributedDataParallelKwargs(
+        broadcast_buffers=False, find_unused_parameters=True
+    )
+    accelerator = Accelerator(
+        project_dir=".",
+        split_batches=True,
+        kwargs_handlers=[ddp_kwargs],
+        mixed_precision=config.training.mixed_precision,
+        step_scheduler_with_optimizer=False,
+    )
+    model = build_model(model_config)
+    for key in model:
+        model[key] = accelerator.prepare(model[key])
+        model[key].to(config.training.device)
+
+    disc_loss = DiscriminatorLoss(mrd=model.mrd)
+
+    accelerator.register_for_checkpointing(config)
+    accelerator.register_for_checkpointing(model_config)
+    accelerator.register_for_checkpointing(manifest)
+    accelerator.register_for_checkpointing(disc_loss)
+
+    accelerator.load_state(checkpoint)
+
+    convert_to_onnx(
+        model_config,
+        duration,
+        speech,
+        model,
+        config.training.device,
+        duration_processor,
+    )
 
 
 ##############################################################################

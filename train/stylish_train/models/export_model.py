@@ -11,6 +11,7 @@ class ExportModel(torch.nn.Module):
         pitch_energy_predictor,
         pe_text_encoder,
         pe_text_style_encoder,
+        device,
         **kwargs
     ):
         super(ExportModel, self).__init__()

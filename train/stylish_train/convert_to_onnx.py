@@ -19,14 +19,19 @@ def add_meta_data_onnx(filename, key, value):
 
 
 def convert_to_onnx(
-    model_config: ModelConfig, out_dir, model_in, device, duration_processor
+    model_config: ModelConfig,
+    duration_path,
+    speech_path,
+    model_in,
+    device,
+    duration_processor,
 ):
     text_cleaner = TextCleaner(model_config.symbol)
     model = ExportModel(**model_in, device=device).eval()
     stft = STFT(
-        filter_length=model_in.speech_predictor.generator.gen_istft_n_fft,
-        hop_length=model_in.speech_predictor.generator.gen_istft_hop_size,
-        win_length=model_in.speech_predictor.generator.gen_istft_n_fft,
+        filter_length=model_config.n_fft,
+        hop_length=model_config.hop_length,
+        win_length=model_config.win_length,
     )
     model.speech_predictor.generator.stft = stft.to(device).eval()
     duration_predictor = model_in.duration_predictor.eval()
@@ -48,7 +53,6 @@ def convert_to_onnx(
     text_mask = length_to_mask(text_lengths, text_lengths[0])
 
     with torch.no_grad():
-        filename = f"{out_dir}/duration.onnx"
         inputs = (texts, text_lengths)
         exported_program = torch.export.export(
             duration_predictor,
@@ -62,7 +66,7 @@ def convert_to_onnx(
             exported_program,
             inputs,
             opset_version=19,
-            f=filename,
+            f=duration_path,
             input_names=["texts", "text_lengths"],
             output_names=["duration"],
             dynamo=True,
@@ -72,13 +76,12 @@ def convert_to_onnx(
                 "text_lengths": (1,),
             },
         )
-        onnx_program.save(filename)
+        onnx_program.save(duration_path)
 
         dur_pred = duration_predictor(texts, text_lengths)
         dur_pred = rearrange(dur_pred, "1 k c -> k c")
         alignment = duration_processor(dur_pred, text_lengths).unsqueeze(0)
 
-        filename = f"{out_dir}/stylish.onnx"
         inputs = (texts, text_lengths, alignment)
 
         exported_program = torch.export.export(
@@ -103,7 +106,7 @@ def convert_to_onnx(
             exported_program,
             inputs,
             opset_version=19,
-            f=filename,
+            f=speech_path,
             input_names=["texts", "text_lengths", "alignment"],
             output_names=["waveform"],
             dynamo=True,
@@ -115,6 +118,5 @@ def convert_to_onnx(
             ),
             # report=True,
         )
-        onnx_program.save(filename)
-    add_meta_data_onnx(filename, "model_config", model_config.model_dump_json())
-    return filename
+        onnx_program.save(speech_path)
+    add_meta_data_onnx(speech_path, "model_config", model_config.model_dump_json())
