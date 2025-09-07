@@ -9,7 +9,7 @@ TODO: Make some samples
 Stylish TTS is getting close to release. But before release, we need to complete these tasks:
 
 - [ ] Verify final model architecture
-- [ ] Merge disc-opt into main
+- [x] Merge disc-opt into main
 - [ ] Verify ONNX conversion
 - [x] Rework CLI
 - [x] Import pitch cache script and make it use a concurrent.futures worker pool
