@@ -46,11 +46,14 @@ training_plan:
     lr: 1e-4
 
 dataset:
-  train_data: "path/to/your/train-list.txt"
-  val_data: "path/to/your/val-list.txt"
-  wav_path: "path/to/your/wav-files"
-  pitch_path: "path/to/your/pitch.safetensors"
-  alignment_path: "path/to/your/alignment.safetensors"
+  # All paths in this section are relative to the main path
+  path: "path/to/your/dataset"
+  train_data: "train-list.txt"
+  val_data: "val-list.txt"
+  wav_path: "wav-dir"
+  pitch_path: "pitch.safetensors"
+  alignment_path: "alignment.safetensors"
+  alignment_model_path: "alignment_model.safetensors"
 
 validation:
   # Number of samples to generate per validation step
