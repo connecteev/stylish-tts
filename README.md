@@ -19,7 +19,32 @@ pipx ensure-path
 
 # Training a Model
 
-In order to train your model, you need a GPU with at least 16 GB of VRAM and PyTorch support and you will need a dataset.
+In order to train your model, you need a GPU (or CPU and plenty of time) with PyTorch support and you will need a dataset. You will need your own `config.yml` file created from a template [here](https://github.com/Stylish-TTS/stylish-tts/blob/main/config/config.yml). You will need to specify the device ("cuda" or "cpu" or whatever will work with your torch installation).
+
+You will need to fill in the `dataset` section. The `path` should be the root of your dataset, and the various other paths in this section are relative to that root. If you use the default file and directory names, your directory structure will look something like this:
+
+```
+path/to/your/dataset/             # Root
+|
++-> train-list.txt                # Training list file (described below)
+|
++-> val-list.txt                  # Validation list file (described below)
+|
++-> wav-dir                       # Folder with wav files for segments
+|   |
+|   +-> something.wav
+|   |
+|   +-> other.wav
+|   |
+|   +-> ...
+|
++-> pitch.safetensors             # Pre-cached segment pitches. You will generate this file below
+|
++-> alignment.safetensors         # Pre-cached alignments. You will generate this file below
+|
++-> alignment_model.safetensors   # Model for generating alignments. You will train this below
+
+```
 
 ## Preparing a dataset
 
@@ -45,11 +70,14 @@ The plaintext is the original text of your utterance before phonemization. It do
 
 ### Pitch Data
 
-Stylish TTS uses a pre-cached ground truth pitch (F0) for all your segments. There is a script to generate it available at the stylish-datasets repository:
+Stylish TTS uses a pre-cached ground truth pitch (F0) for all your segments. To generate these pitches, run:
 
-https://github.com/Stylish-TTS/stylish-dataset
+```
+cd stylish-tts/train
+uv run stylish_train/cli.py pitch /path/to/your/config.yml --workers 16
+```
 
-calculate-pitch.py is a single-process version while all-pitch.py calculates them in parallel using multi-processing. Pitch is calculated using Harvest which is CPU-only and so it will take some time.
+The number of workers should be approximately equal to the number of cores you have. By default, Harvest is used to extract pitch which is a CPU-based system. If you find this too slow, there is also a GPU-based option available by passing `--method rmvpe` on the command line. When finished, it will write the pre-cached pitches at the file specified by your `config.yml`.
 
 ### Alignment Data
 
@@ -67,56 +95,43 @@ During alignment pre-training, we ALSO train on the validation set. This is usua
 
 ```
 cd stylish-tts/train
-uv run stylish_train/train.py \
-    --model_config_path ../config/model.yml \
-    --config_path /path/to/your/config.yml \
-    --stage alignment \
-    --out_dir /path/to/your/output
+uv run stylish_train/cli.py train-align /path/to/your/config.yml --out /path/to/your/output
 ```
 
-Once the alignment stage completes, it will provide a trained model at `/path/to/your/output/alignment_model.safetensors`. It is important to realize that this is a MODEL, not the alignments themselves. We will use this model to generate the alignments.
+The `--out` option is where logs and checkpoints will end up. Once the alignment stage completes, it will provide a trained model at the file specified in your `config.yml`. It is important to realize that this is a MODEL, not the alignments themselves. We will use this model to generate the alignments.
 
 ```
 cd stylish-tts/train
-PYTHONPATH=. uv run stylish_train/align_text.py \
-    --model_config_path ../config/model.yml \
-    --config_path /path/to/your/config.yml \
-    --model /path/to/your/alignment_model.safetensors \    
-    --out /path/to/alignment.safetensors
+uv run stylish_train/cli.py align /path/to/your/config.yml
 ```
 
 This generates the actual cached alignments for all the segments for both training and validation data as configured in your config.yml. You should now add the resulting alignment.safetensors path to your config.yml.
 
 #### OPTIONAL: Culling Bad Alignments
 
-Running align_text.py generates a score file for every segment it processes. This is a confidence value. Confidence is not a guarantee of accuracy. The model might be confidently wrong of course. But it is a safe bet that the segments it is least confident about either have a problem (perhaps the text doesn't match the audio) or are just a bad fit for the model's heuristics. Culling the segments with the least confidence will make your model converge faster, though it also means it will see less training data. I have found that culling the 10% with the lowest confidence scores is a good balance.
+Running align_text.py generates a score for every segment it processes. These scores are written to files in your dataset `path`. This is a confidence value. Confidence is not a guarantee of accuracy. The model might be confidently wrong of course. But it is a safe bet that the segments it is least confident about either have a problem (perhaps the text doesn't match the audio) or are just a bad fit for the model's heuristics. Culling the segments with the least confidence will make your model converge faster, though it also means it will see less training data. I have found that culling the 10% with the lowest confidence scores is a good balance.
 
-## Running train.py
+## Starting a training run
+
+All of the commands above should only need to be done once per dataset as long as the dataset does not change. Once they are done, their results are kept in your dataset directory. Now we begin actually training.
 
 Here is a typical command to start off a new training run using a single machine.
 
 ```
 cd stylish-tts/train
-uv run stylish_train/train.py \
-    --model_config_path ../config/model.yml \
-    --config_path /path/to/your/config.yml \
-    --stage acoustic \
-    --out_dir /path/to/your/output
+uv run stylish_train/cli.py train /path/to/your/config.yml --out /path/to/your/output
 ```
 
-model_config_path: You should usually leave the model_config_path pointing at the default model configuration.
+--out: This is the destination path for all checkpoints, training logs, and tensorboard data. A separate sub-directory is created for each stage of training. Make sure to have plenty of disk space available here as checkpoints can take a large amount of storage.
 
-config_path: You should make your own copy of the config.yaml in the repository and fill in the paths to your dataset.
+Training happens over the course of four stages. When you begin training, it will start with the `acoustic` stage by default. The main four stages of training are `acoustic`, `textual`, `style`, and `duration`. As each stage ends, the next will automatically begin. You can specify a stage with the `--stage` option which is necessary if you are resuming from a checkpoint. Each stage has its own logs and tensorboard data in a separate subdirectory of the out_dir.
 
-stage: Aside from alignment discussed above, the main four stages of training are 'acoustic', 'textual', 'style', and 'duration'. You always start in 'acoustic' and as each stage ends, the next will automatically begin. You only need to specify the others if you are resuming from a checkpoint. Each stage has its own logs and tensorboard data in a separate subdirectory of the out_dir.
-
-out_dir: This is the destination path for all checkpoints, training logs, and tensorboard data. A separate sub-directory is created for each stage of training. Make sure to have plenty of disk space available here as checkpoints can take a large amount of storage.
 
 ## Expectations during training
 
 It will take a long time to run this script. So it is a good idea to run using screen or tmux to have a persistent shell that won't disappear if you get disconnected or close the window.
 
-Stages advance automatically and a checkpoint is created at the end of every stage before moving to the next. Other checkpoints will be saved and validations will be periodically run based on your config.yml settings. Every stage will have its own sub-directory of `out_dir` and its own training log and tensorboard graphs/samples.
+Stages advance automatically and a checkpoint is created at the end of every stage before moving to the next. Other checkpoints will be saved and validations will be periodically run based on your config.yml settings. Every stage will have its own sub-directory of `out` and its own training log and tensorboard graphs/samples.
 
 ### Acoustic training
 
@@ -144,7 +159,7 @@ Aside from that, the training regimen should look a lot like the previous stage.
 
 The final stage of training removes our last 'cheat' and trains the duration predictor to try to replicate the prosody of the original. The other models are frozen. All samples use only values predicted from the text.
 
-The `duration` loss is obviously the one to look for here. While `duration_ce` should also be slowly going down. The main danger here is overfitting. So if you see validation loss stagnate or start going up you should stop training even if training loss is still going down.
+The `duration` and `duration_ce` losses should both slowly go down. The main danger here is overfitting. So if you see validation loss stagnate or start going up you should stop training even if training loss is still going down. It is expected that one of the losses might plateau before the other.
 
 When you listen to samples, you will get the same version you'd expect to hear during inference. Listen to make sure the voice as a whole is not going to fast or slow or just going past punctuation without pausing. You should no longer expect it to mirror the ground truth exactly, but it should have generalized to the point where it is a plausible and expressive reading. As training proceeds, it should sound more and more like fluent prosody. If there are still pitch or energy issues like warbles or loudness or tone, then those won't be fixed in this stage and you may need to train more in Textual or Acoustic before trying Duration training.
 
@@ -152,11 +167,10 @@ When you listen to samples, you will get the same version you'd expect to hear d
 
 ```
 cd stylish-tts/train
-uv run stylish_train/train.py \
-    --model_config_path config/model.yml \
-    --config_path /path/to/your/config.yml \
+uv run stylish_train/cli.py train \
+    /path/to/your/config.yml \
     --stage <stage>
-    --out_dir /path/to/your/output \
+    --out /path/to/your/output \
     --checkpoint /path/to/your/checkpoint
 ```
 
@@ -164,27 +178,24 @@ You can load a checkpoint from any stage via the --checkpoint argument. You stil
 
 Note that Stylish TTS checkpoints are not compatible with StyleTTS 2 checkpoints.
 
-# Export to tflite
-This command will export a tflite file to `/path/to/your/output/stylish.tflite` for the main speech prediction along with a second `/path/to/your/output/duration.tflite` for the duration model.
+# Export to ONNX
+This command will export two ONNX files, one for predicting duration and the other for predicting speech.
 
 ```sh
 cd stylish-tts/train
-uv run stylish_train/train.py \
-    --convert True \
-    --model_config_path config/model.yml \
-    --config_path /path/to/your/config.yml \
-    --stage textual
-    --out_dir /path/to/your/output \
+uv run stylish_train/cli.py convert \
+    /path/to/your/config.yml \
+    --duration /path/to/your/duration.onnx
+    --speech /path/to/your/speech.onnx \
     --checkpoint /path/to/your/checkpoint
 ```
 
-Using the tflite model:
+Using the ONNX model:
 ```sh
 cd stylish-tts/train
 uv run stylish_train/test_onnx.py
-    --stylish_path /path/to/your/output/stylish.tflite \
-    --duration_path /path/to/your/output/duration.tflite \
-    --model_path /path/to/your/model.yml \
+    --speech /path/to/your/output/speech.onnx \
+    --duration /path/to/your/output/duration.onnx \
     --text "ðˈiːz wˈɜː tˈuː hˈæv ˈæn ɪnˈɔːɹməs ˈɪmpækt , nˈɑːt ˈoʊnliː bɪkˈɔz ðˈeɪ wˈɜː əsˈoʊsiːˌeɪtᵻd wˈɪð kˈɑːnstəntˌiːn ," \
     --text "bˈʌt ˈɔlsoʊ bɪkˈɔz , ˈæz ɪn sˈoʊ mˈɛniː ˈʌðɚ ˈɛɹiːəz , ðə dɪsˈɪʒənz tˈeɪkən bˈaɪ kˈɑːnstəntˌiːn ( ˈɔːɹ ɪn hˈɪz nˈeɪm ) wˈɜː tˈuː hˈæv ɡɹˈeɪt səɡnˈɪfɪkəns fˈɔːɹ sˈɛntʃɚiːz tˈuː kˈʌm ." \
     --combine true

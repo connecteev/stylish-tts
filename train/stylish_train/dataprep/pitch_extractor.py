@@ -87,6 +87,7 @@ def calculate_pitch_set(label, method, path, wavdir, model_config, workers):
                     result[name] = current.tensor
             except Exception as e:
                 print(f"{name} generated an exception: {str(e)}")
+    return result
 
 
 class PitchResult:
