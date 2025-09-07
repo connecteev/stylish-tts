@@ -24,6 +24,7 @@ dependencies = [
     "onnxruntime-gpu>=1.22.0",
     "onnxscript>=0.3.2",
     "nvidia-ml-py>=13.580.65",
+    "pyworld>=0.3.5",
 ]
 
 [dependency-groups]

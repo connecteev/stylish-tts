@@ -146,13 +146,32 @@ def align(config_path, model_config_path):
     type=str,
     help="Model configuration (optional), defaults to known-good model parameters.",
 )
-def pitch(*args, **kwargs):
+@click.option(
+    "-k",
+    "--workers",
+    default=8,
+    type=int,
+    help="Number of worker threads to use for calculation",
+)
+@click.option(
+    "--method",
+    default="pyworld",
+    type=str,
+    help="Method used to calculate. 'pyworld' (CPU based, traditional), 'rmvpe' (GPU based, ML model)",
+)
+def pitch(config_path, model_config_path, workers, method):
     """Calculate pitch for a dataset
 
     <config_path> is your main configuration file. Calculates the fundamental frequencies for every segment in your dataset. The pitches are saved to the <path>/<pitch_path> from the dataset section of the config file.
     """
+    if method != "pyworld" and method != "rmvpe":
+        exit("Pitch calculation must either be pyworld or rmvpe")
     print("Calculate pitch...")
-    print(args, kwargs)
+    config = get_config(config_path)
+    model_config = get_model_config(model_config_path)
+    from dataprep.pitch_extractor import calculate_pitch
+
+    calculate_pitch(config, model_config, method, workers)
 
 
 ##### train #####
