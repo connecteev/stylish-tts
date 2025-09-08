@@ -157,6 +157,7 @@ def train_model(
         num_workers=4,
         device=train.config.training.device,
         multispeaker=train.model_config.multispeaker,
+        stage=stage,
         train=train,
     )
     train.val_dataloader = train.accelerator.prepare(train.val_dataloader)

@@ -113,6 +113,7 @@ class BatchManager:
                             multispeaker=self.multispeaker,
                             probe_bin=key,
                             probe_batch_size=batch_size,
+                            stage=train.stage.name,
                             train=train,
                         )
                         for _, batch in enumerate(loader):
@@ -163,6 +164,7 @@ class BatchManager:
             drop_last=True,
             multispeaker=self.multispeaker,
             epoch=train.manifest.current_epoch,
+            stage=train.stage.name,
             train=train,
         )
         train.manifest.steps_per_epoch = train.stage.get_steps_per_epoch()

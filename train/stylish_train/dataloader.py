@@ -188,9 +188,10 @@ class Collater(object):
       adaptive_batch_size (bool): if true, decrease batch size when long data comes.
     """
 
-    def __init__(self, return_wave=False, multispeaker=False, *, train):
+    def __init__(self, return_wave=False, multispeaker=False, *, stage, train):
         self.return_wave = return_wave
         self.multispeaker = multispeaker
+        self.stage = stage
         self.train = train
         self.hop_length = train.model_config.hop_length
 
@@ -225,8 +226,10 @@ class Collater(object):
             text_lengths[bid] = text_size
             paths[bid] = path
             waves[bid] = wave
-            # TDDO check for alignment stage and fail hard if not in alignment stage
-            if pitch is not None:
+            if self.stage != "alignment":
+                if pitch is None:
+                    exit(f"Pitch not found for segment {path}")
+                print(pitches[bid].shape, pitch.shape, path)
                 pitches[bid] = pitch
 
             # alignments[bid, :text_size, : mel_length // 2] = duration
@@ -241,11 +244,10 @@ class Collater(object):
                         pred_dur[i] -= 1
                         pred_dur[i + 1] += 1
             alignment = self.train.duration_processor.duration_to_alignment(pred_dur)
-            if alignment.shape[1] == mel_length:
+            if self.stage != "alignment":
+                if alignment.shape[1] != mel_length:
+                    exit(f"Alignment for segment {path} did not match audio length")
                 alignments[bid, :text_size, :mel_length] = alignment
-            # TODO: Add a hard failure here if not in alignment stage
-            # else:
-            #     exit(f"alignment for {path} did not match audio length")
 
         result = (
             waves,
@@ -271,10 +273,11 @@ def build_dataloader(
     multispeaker=False,
     epoch=1,
     *,
+    stage,
     train,
 ):
     collate_config["multispeaker"] = multispeaker
-    collate_fn = Collater(train=train, **collate_config)
+    collate_fn = Collater(stage=stage, train=train, **collate_config)
     drop_last = not validation and probe_batch_size is not None
     data_loader = torch.utils.data.DataLoader(
         dataset,

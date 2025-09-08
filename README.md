@@ -14,7 +14,7 @@ Stylish TTS is getting close to release. But before release, we need to complete
 - [x] Rework CLI
 - [x] Import pitch cache script and make it use a concurrent.futures worker pool
 - [ ] Make sure it can work as a PyPi package
-- [ ] Do proper stage detection in dataloader to prevent mixups with precached alignment/pitch
+- [x] Do proper stage detection in dataloader to prevent mixups with precached alignment/pitch
 - [ ] Replace checkpointing with safetensors instead of accelerator checkpoint
 - [ ] Remove dependency on accelerator
 - [ ] Audit dependencies

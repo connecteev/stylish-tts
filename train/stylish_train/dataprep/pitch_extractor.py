@@ -98,36 +98,15 @@ def calculate_pitch_set(label, method, path, wavdir, model_config, workers, devi
             name = future_map[future]
             try:
                 current = future.result()
-                if len(current.skipped) > 0:
-                    print(f"{name} was skipped: {current.skipped}")
-                else:
-                    result[name] = current.tensor
+                result[name] = current
             except Exception as e:
                 print(f"{name} generated an exception: {str(e)}")
     return result
 
 
-class PitchResult:
-    def __init__(self):
-        self.tensor = None
-        self.skipped = ""
-
-
 def calculate_pitch_pyworld(
     name, text_raw, wave, sample_rate, hop_length, model, device
 ):
-    result = PitchResult()
-    time_bin = get_time_bin(wave.shape[0], hop_length)
-    if time_bin == -1:
-        result.skipped = "Too short"
-        return result
-    frame_count = get_frame_count(time_bin)
-    pad_start = (frame_count * hop_length - wave.shape[0]) // 2
-    pad_end = frame_count * hop_length - wave.shape[0] - pad_start
-    wave = numpy.concatenate(
-        [numpy.zeros([pad_start]), wave, numpy.zeros([pad_end])], axis=0
-    )
-
     bad_f0 = 5
     zero_value = -10
     frame_period = hop_length / sample_rate * 1000
@@ -139,24 +118,11 @@ def calculate_pitch_pyworld(
     pitch = torch.from_numpy(pitch).float().unsqueeze(0)
     if torch.any(torch.isnan(pitch)):
         pitch[torch.isnan(pitch)] = zero_value
-
-    result.tensor = pitch
-    return result
+    pitch = pitch[:, :-1]
+    return pitch
 
 
 def calculate_pitch_rmvpe(name, text_raw, wave, sample_rate, hop_length, model, device):
-    result = PitchResult()
-    time_bin = get_time_bin(wave.shape[0], hop_length)
-    if time_bin == -1:
-        result.skipped = "Too short"
-        return result
-    frame_count = get_frame_count(time_bin)
-    pad_start = (frame_count * hop_length - wave.shape[0]) // 2
-    pad_end = frame_count * hop_length - wave.shape[0] - pad_start
-    wave = numpy.concatenate(
-        [numpy.zeros([pad_start]), wave, numpy.zeros([pad_end])], axis=0
-    )
-
     zero_value = -10
     wave_16k = librosa.resample(
         wave, orig_sr=sample_rate, target_sr=16000, res_type="kaiser_best"
@@ -177,6 +143,4 @@ def calculate_pitch_rmvpe(name, text_raw, wave, sample_rate, hop_length, model, 
     )  # (1, frames)
     if torch.any(torch.isnan(pitch)):
         pitch[torch.isnan(pitch)] = zero_value
-
-    result.tensor = pitch
-    return result
+    return pitch
