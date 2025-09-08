@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import click
 import numpy
 import torch
+from torch.nn import functional as F
 import librosa
 
 from safetensors.torch import save_file
@@ -12,6 +13,8 @@ import pyworld
 import tqdm
 from dataloader import get_frame_count, get_time_bin
 from safetensors.torch import save_file
+import onnxruntime as ort
+from huggingface_hub import hf_hub_download
 
 
 def calculate_pitch(config, model_config, method, workers):
@@ -19,7 +22,13 @@ def calculate_pitch(config, model_config, method, workers):
     out = root / config.dataset.pitch_path
     wavdir = root / config.dataset.wav_path
     vals = calculate_pitch_set(
-        "Val Set", method, root / config.dataset.val_data, wavdir, model_config, workers
+        "Val Set",
+        method,
+        root / config.dataset.val_data,
+        wavdir,
+        model_config,
+        workers,
+        config.training.device,
     )
     trains = calculate_pitch_set(
         "Train set",
@@ -28,15 +37,21 @@ def calculate_pitch(config, model_config, method, workers):
         wavdir,
         model_config,
         workers,
+        config.training.device,
     )
     result = vals | trains
     save_file(result, out)
 
 
-def calculate_pitch_set(label, method, path, wavdir, model_config, workers):
+def calculate_pitch_set(label, method, path, wavdir, model_config, workers, device):
+    model = None
     if method == "rmvpe":
-        # Initialize model?
         calculate_single = calculate_pitch_rmvpe
+        from .rmvpe import RMVPE
+
+        model = RMVPE(
+            hf_hub_download("stylish-tts/pitch_extractor", "rmvpe.safetensors")
+        )
     elif method == "pyworld":
         calculate_single = calculate_pitch_pyworld
     else:
@@ -64,6 +79,8 @@ def calculate_pitch_set(label, method, path, wavdir, model_config, workers):
                     wave,
                     model_config.sample_rate,
                     model_config.hop_length,
+                    model,
+                    device,
                 )
             ] = name
 
@@ -96,18 +113,10 @@ class PitchResult:
         self.skipped = ""
 
 
-# def calculate_pitch_pyworld(path, wavdir, process_id):
-def calculate_pitch_pyworld(name, text_raw, wave, sample_rate, hop_length):
-    # result = {}
-    # lines = path.read_text(encoding="utf-8").splitlines()
-
-    # for count, line in enumerate(lines, 1):
-    # fields = line.split("|")
-    # name = fields[0]
-
+def calculate_pitch_pyworld(
+    name, text_raw, wave, sample_rate, hop_length, model, device
+):
     result = PitchResult()
-    # if wave.shape[-1] == 2:
-    #     wave = wave[:, 0].squeeze()
     time_bin = get_time_bin(wave.shape[0], hop_length)
     if time_bin == -1:
         result.skipped = "Too short"
@@ -135,58 +144,39 @@ def calculate_pitch_pyworld(name, text_raw, wave, sample_rate, hop_length):
     return result
 
 
-def calculate_pitch_rmvpe(path, wavdir, checkpoint, process_id):
-    from rmvpe import RMVPE
+def calculate_pitch_rmvpe(name, text_raw, wave, sample_rate, hop_length, model, device):
+    result = PitchResult()
+    time_bin = get_time_bin(wave.shape[0], hop_length)
+    if time_bin == -1:
+        result.skipped = "Too short"
+        return result
+    frame_count = get_frame_count(time_bin)
+    pad_start = (frame_count * hop_length - wave.shape[0]) // 2
+    pad_end = frame_count * hop_length - wave.shape[0] - pad_start
+    wave = numpy.concatenate(
+        [numpy.zeros([pad_start]), wave, numpy.zeros([pad_end])], axis=0
+    )
 
-    rmvpe = RMVPE(checkpoint)
     zero_value = -10
-    result = {}
-    lines = path.read_text(encoding="utf-8").splitlines()
+    wave_16k = librosa.resample(
+        wave, orig_sr=sample_rate, target_sr=16000, res_type="kaiser_best"
+    )
 
-    for count, line in enumerate(lines, 1):
-        fields = line.split("|")
-        name = fields[0]
-        wave, sr = soundfile.read(wavdir / name)
-        try:
-            wave, sr = soundfile.read(wavdir / name)
-            if sr != 24000:
-                print(f"Skipping {name}: Wrong sample rate ({sr})")
-        except:
-            print(f"Skipping {name}: File not found or corrupted")
-            continue
-        if wave.shape[-1] == 2:
-            wave = wave[:, 0].squeeze()
-        time_bin = get_time_bin(wave.shape[0])
-        if time_bin == -1:
-            print(f"Skipping {name}: Too short")
-            continue
-        frame_count = get_frame_count(time_bin)
-        pad_start = (frame_count * 300 - wave.shape[0]) // 2
-        pad_end = frame_count * 300 - wave.shape[0] - pad_start
-        wave = numpy.concatenate(
-            [numpy.zeros([pad_start]), wave, numpy.zeros([pad_end])], axis=0
-        )
+    pitch_rmvpe = (
+        torch.from_numpy(model.infer_from_audio(wave_16k, device=device))
+        .float()
+        .unsqueeze(0)
+    )  # (1, frames)
+    pitch = torch.nn.functional.interpolate(
+        pitch_rmvpe.unsqueeze(1),  # (1, 1, frames)
+        size=frame_count,
+        mode="linear",
+        align_corners=True,
+    ).squeeze(
+        1
+    )  # (1, frames)
+    if torch.any(torch.isnan(pitch)):
+        pitch[torch.isnan(pitch)] = zero_value
 
-        wave_16k = librosa.resample(
-            wave, orig_sr=24000, target_sr=16000, res_type="kaiser_best"
-        )
-        pitch_rmvpe = (
-            torch.from_numpy(rmvpe.infer_from_audio(wave_16k)).float().unsqueeze(0)
-        )  # (1, frames)
-        pitch = torch.nn.functional.interpolate(
-            pitch_rmvpe.unsqueeze(1),  # (1, 1, frames)
-            size=frame_count,
-            mode="linear",
-            align_corners=True,
-        ).squeeze(
-            1
-        )  # (1, frames)
-        if torch.any(torch.isnan(pitch)):
-            pitch[torch.isnan(pitch)] = zero_value
-        # pitch = pitch[:, :-1]
-        result[name] = pitch
-
-        print(".", end=" ")
-        if count % 100 == 0:
-            print(f"P{process_id} {count}/{len(lines)}")
+    result.tensor = pitch
     return result

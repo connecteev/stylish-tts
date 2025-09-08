@@ -2164,6 +2164,19 @@ wheels = [
 ]
 
 [[package]]
+name = "resampy"
+version = "0.4.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numba" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/29/f1/34be702a69a5d272e844c98cee82351f880985cfbca0cc86378011078497/resampy-0.4.3.tar.gz", hash = "sha256:a0d1c28398f0e55994b739650afef4e3974115edbe96cd4bb81968425e916e47", size = 3080604, upload-time = "2024-03-05T20:36:08.119Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4d/b9/3b00ac340a1aab3389ebcc52c779914a44aadf7b0cb7a3bf053195735607/resampy-0.4.3-py3-none-any.whl", hash = "sha256:ad2ed64516b140a122d96704e32bc0f92b23f45419e8b8f478e5a05f83edcebd", size = 3076529, upload-time = "2024-03-05T20:36:02.439Z" },
+]
+
+[[package]]
 name = "rfc3339-validator"
 version = "0.1.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2445,6 +2458,7 @@ dependencies = [
     { name = "onnxscript" },
     { name = "pydantic" },
     { name = "pyworld" },
+    { name = "resampy" },
     { name = "stylish-lib" },
     { name = "tensorboard" },
     { name = "torch" },
@@ -2477,6 +2491,7 @@ requires-dist = [
     { name = "onnxscript", specifier = ">=0.3.2" },
     { name = "pydantic", specifier = ">=2.10.6" },
     { name = "pyworld", specifier = ">=0.3.5" },
+    { name = "resampy", specifier = ">=0.4.3" },
     { name = "stylish-lib", editable = "../lib" },
     { name = "tensorboard", specifier = ">=2.18.0" },
     { name = "torch", specifier = "~=2.8" },
