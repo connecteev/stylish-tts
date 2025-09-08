@@ -10,7 +10,6 @@ from scipy.io.wavfile import write
 import onnx
 from time import perf_counter
 from utils import DurationProcessor
-import ai_edge_torch
 
 
 def read_meta_data_onnx(filename, key):
