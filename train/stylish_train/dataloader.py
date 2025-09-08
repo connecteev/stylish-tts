@@ -229,7 +229,6 @@ class Collater(object):
             if self.stage != "alignment":
                 if pitch is None:
                     exit(f"Pitch not found for segment {path}")
-                print(pitches[bid].shape, pitch.shape, path)
                 pitches[bid] = pitch
 
             # alignments[bid, :text_size, : mel_length // 2] = duration
