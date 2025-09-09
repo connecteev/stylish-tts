@@ -311,31 +311,11 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
 
     accelerator.load_state(checkpoint)
 
-    # Compute normalization stats for embedding in ONNX metadata
-    from stylish_tts.train.utils import compute_log_mel_stats, get_data_path_list
-
-    train_list = get_data_path_list(
-        osp.join(config.dataset.path, config.dataset.train_data)
-    )
-    import torchaudio
-
-    to_mel = torchaudio.transforms.MelSpectrogram(
-        n_mels=model_config.n_mels,
-        n_fft=model_config.n_fft,
-        win_length=model_config.win_length,
-        hop_length=model_config.hop_length,
-        sample_rate=model_config.sample_rate,
-    )
-    mean, std, frames = compute_log_mel_stats(
-        train_list,
-        osp.join(config.dataset.path, config.dataset.wav_path),
-        to_mel,
-        model_config.sample_rate,
-    )
-    if frames == 0 or (abs(mean - (-4.0)) < 1e-6 and abs(std - 4.0) < 1e-6):
-        logger.warning(
-            "Normalization stats for export appear to be defaults (-4, 4) or zero frames; ONNX will embed defaults."
-        )
+    # Load normalization stats from checkpoint for embedding into ONNX metadata
+    from stylish_tts.train.train_context import NormalizationStats
+    norm = NormalizationStats()
+    accelerator.register_for_checkpointing(norm)
+    accelerator.load_state(checkpoint)
 
     convert_to_onnx(
         model_config,
@@ -345,8 +325,15 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
         config.training.device,
         duration_processor,
     )
-    # Embed normalization stats into ONNX metadata
+    # Embed normalization stats into ONNX metadata (only if present in checkpoint)
     from stylish_tts.train.convert_to_onnx import add_meta_data_onnx
-
-    add_meta_data_onnx(speech, "mel_log_mean", str(mean))
-    add_meta_data_onnx(speech, "mel_log_std", str(std))
+    if norm.frames > 0:
+        add_meta_data_onnx(speech, "mel_log_mean", str(norm.mel_log_mean))
+        add_meta_data_onnx(speech, "mel_log_std", str(norm.mel_log_std))
+        logger.info(
+            f"Embedded normalization stats from checkpoint: mean={norm.mel_log_mean:.4f}, std={norm.mel_log_std:.4f}"
+        )
+    else:
+        logger.warning(
+            "Checkpoint did not contain normalization stats; skipping embedding in ONNX."
+        )

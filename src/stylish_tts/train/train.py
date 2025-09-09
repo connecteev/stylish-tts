@@ -72,111 +72,6 @@ class LoggerManager:
         self.file_handler = self.add_file_handler(logger, out_dir)
 
 
-def ensure_normalization_stats(train: TrainContext) -> None:
-    """Ensure normalization stats exist in the run directory and context.
-
-    If a cached file exists and recompute=False, load it. Otherwise compute
-    stats from the training split using the current mel transform and save.
-    """
-    out_path = osp.join(train.out_dir, "normalization.json")
-    if osp.exists(out_path):
-        try:
-            with open(out_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            train.normalization.mel_log_mean = float(data.get("mel_log_mean", -4.0))
-            train.normalization.mel_log_std = float(data.get("mel_log_std", 4.0))
-            train.normalization.frames = int(data.get("frames", 0))
-            logger.info(
-                f"Loaded normalization stats: mean={train.normalization.mel_log_mean:.4f}, std={train.normalization.mel_log_std:.4f}, frames={train.normalization.frames}"
-            )
-            if train.normalization.frames == 0 or (
-                abs(train.normalization.mel_log_mean - (-4.0)) < 1e-6
-                and abs(train.normalization.mel_log_std - 4.0) < 1e-6
-            ):
-                logger.warning(
-                    "Normalization stats appear to be defaults (-4, 4) or empty; delete normalization.json to trigger recompute."
-                )
-            return
-        except Exception as e:
-            logger.warning(f"Failed to load normalization.json, will recompute: {e}")
-
-    # Compute stats
-    from stylish_tts.train.utils import compute_log_mel_stats, get_data_path_list
-    import torchaudio
-
-    train_list = get_data_path_list(train.batch_manager.train_path)
-    # Show progress on main process
-    iterator = train_list
-    try:
-        if train.accelerator.is_main_process:
-            import tqdm as _tqdm
-
-            iterator = _tqdm.tqdm(
-                train_list,
-                desc="Computing normalization stats",
-                unit="segments",
-                total=len(train_list),
-                colour="MAGENTA",
-                dynamic_ncols=True,
-            )
-    except Exception:
-        iterator = train_list
-
-    mean, std, frames = compute_log_mel_stats(
-        iterator,
-        str(train.data_path(train.config.dataset.wav_path)),
-        train.to_mel,
-        train.model_config.sample_rate,
-    )
-    train.normalization.mel_log_mean = mean
-    train.normalization.mel_log_std = std
-    train.normalization.frames = frames
-    try:
-        with open(out_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "mel_log_mean": mean,
-                    "mel_log_std": std,
-                    "frames": frames,
-                    "sample_rate": train.model_config.sample_rate,
-                    "n_mels": train.model_config.n_mels,
-                    "n_fft": train.model_config.n_fft,
-                    "hop_length": train.model_config.hop_length,
-                    "win_length": train.model_config.win_length,
-                },
-                f,
-            )
-        if frames == 0 or (abs(mean - (-4.0)) < 1e-6 and abs(std - 4.0) < 1e-6):
-            logger.warning(
-                "Computed normalization stats are defaults (-4, 4) or zero frames; check dataset lists and audio."
-            )
-        else:
-            logger.info(
-                f"Computed normalization stats: mean={mean:.4f}, std={std:.4f}, frames={frames}"
-            )
-        # Also write a copy under dataset root for reuse across runs
-        ds_copy = osp.join(train.config.dataset.path, "normalization.json")
-        try:
-            with open(ds_copy, "w", encoding="utf-8") as f2:
-                json.dump(
-                    {
-                        "mel_log_mean": mean,
-                        "mel_log_std": std,
-                        "frames": frames,
-                        "sample_rate": train.model_config.sample_rate,
-                        "n_mels": train.model_config.n_mels,
-                        "n_fft": train.model_config.n_fft,
-                        "hop_length": train.model_config.hop_length,
-                        "win_length": train.model_config.win_length,
-                    },
-                    f2,
-                )
-        except Exception as e:
-            logger.warning(f"Failed to write dataset normalization.json: {e}")
-    except Exception as e:
-        logger.warning(f"Failed to write normalization.json: {e}")
-
-
 def train_model(
     config,
     model_config,
@@ -290,9 +185,6 @@ def train_model(
         train=train,
     )
 
-    # Compute or load dataset normalization stats
-    ensure_normalization_stats(train)
-
     # build model
     train.model = build_model(train.model_config)
     for key in train.model:
@@ -337,6 +229,9 @@ def train_model(
             train.manifest.current_step = 0
             train.stage.begin_stage(stage, train)
         logger.info(f"Loaded last checkpoint at {checkpoint} ...")
+
+    # Compute or load dataset normalization stats (after checkpoint load so we can reuse)
+    train.init_normalization()
 
     train.manifest.stage = stage
 
@@ -390,6 +285,24 @@ def train_model(
                     osp.join(train.out_dir, osp.basename(model_config_path)),
                 )
             save_git_diff(train.out_dir)
+            # Copy normalization stats into the new stage directory
+            try:
+                with open(osp.join(train.out_dir, "normalization.json"), "w", encoding="utf-8") as f:
+                    json.dump(
+                        {
+                            "mel_log_mean": train.normalization.mel_log_mean,
+                            "mel_log_std": train.normalization.mel_log_std,
+                            "frames": train.normalization.frames,
+                            "sample_rate": train.model_config.sample_rate,
+                            "n_mels": train.model_config.n_mels,
+                            "n_fft": train.model_config.n_fft,
+                            "hop_length": train.model_config.hop_length,
+                            "win_length": train.model_config.win_length,
+                        },
+                        f,
+                    )
+            except Exception:
+                pass
             if train.accelerator.is_main_process:
                 assert train.writer is not None
                 train.writer.close()

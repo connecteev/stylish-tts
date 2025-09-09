@@ -165,3 +165,142 @@ class TrainContext:
 
     def data_path(self, path: str) -> Path:
         return Path(self.config.dataset.path) / path
+
+    def init_normalization(self) -> None:
+        """Initialize normalization stats for this run.
+
+        Priority order:
+          1) Use stats loaded from checkpoint (if available),
+          2) Load from <stage_out>/normalization.json,
+          3) Compute from train split and save.
+        """
+        import json
+        import os.path as osp
+        from stylish_tts.train.utils import compute_log_mel_stats, get_data_path_list
+        try:
+            import tqdm as _tqdm
+        except Exception:
+            _tqdm = None
+
+        # 1) Already from checkpoint
+        if self.normalization is not None and self.normalization.frames > 0:
+            out_path = osp.join(self.out_dir, "normalization.json")
+            try:
+                with open(out_path, "w", encoding="utf-8") as f:
+                    json.dump(
+                        {
+                            "mel_log_mean": self.normalization.mel_log_mean,
+                            "mel_log_std": self.normalization.mel_log_std,
+                            "frames": self.normalization.frames,
+                            "sample_rate": self.model_config.sample_rate,
+                            "n_mels": self.model_config.n_mels,
+                            "n_fft": self.model_config.n_fft,
+                            "hop_length": self.model_config.hop_length,
+                            "win_length": self.model_config.win_length,
+                        },
+                        f,
+                    )
+            except Exception:
+                pass
+            self.logger.info(
+                f"Using normalization stats from checkpoint: mean={self.normalization.mel_log_mean:.4f}, std={self.normalization.mel_log_std:.4f}"
+            )
+            return
+
+        # 2) Load from file if present
+        out_path = osp.join(self.out_dir, "normalization.json")
+        if osp.exists(out_path):
+            try:
+                with open(out_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                self.normalization.mel_log_mean = float(
+                    data.get("mel_log_mean", -4.0)
+                )
+                self.normalization.mel_log_std = float(
+                    data.get("mel_log_std", 4.0)
+                )
+                self.normalization.frames = int(data.get("frames", 0))
+                self.logger.info(
+                    f"Loaded normalization stats: mean={self.normalization.mel_log_mean:.4f}, std={self.normalization.mel_log_std:.4f}, frames={self.normalization.frames}"
+                )
+                if self.normalization.frames == 0 or (
+                    abs(self.normalization.mel_log_mean - (-4.0)) < 1e-6
+                    and abs(self.normalization.mel_log_std - 4.0) < 1e-6
+                ):
+                    self.logger.warning(
+                        "Normalization stats appear to be defaults (-4, 4) or empty; delete normalization.json to trigger recompute."
+                    )
+                return
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to load normalization.json, will recompute: {e}"
+                )
+
+        # 3) Compute from dataset
+        train_list = get_data_path_list(self.data_path(self.config.dataset.train_data))
+        iterator = train_list
+        if _tqdm is not None and self.accelerator.is_main_process:
+            iterator = _tqdm.tqdm(
+                train_list,
+                desc="Computing normalization stats",
+                unit="segments",
+                total=len(train_list),
+                colour="MAGENTA",
+                dynamic_ncols=True,
+            )
+
+        mean, std, frames = compute_log_mel_stats(
+            iterator,
+            str(self.data_path(self.config.dataset.wav_path)),
+            self.to_mel,
+            self.model_config.sample_rate,
+        )
+        self.normalization.mel_log_mean = mean
+        self.normalization.mel_log_std = std
+        self.normalization.frames = frames
+        try:
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "mel_log_mean": mean,
+                        "mel_log_std": std,
+                        "frames": frames,
+                        "sample_rate": self.model_config.sample_rate,
+                        "n_mels": self.model_config.n_mels,
+                        "n_fft": self.model_config.n_fft,
+                        "hop_length": self.model_config.hop_length,
+                        "win_length": self.model_config.win_length,
+                    },
+                    f,
+                )
+            if frames == 0 or (abs(mean - (-4.0)) < 1e-6 and abs(std - 4.0) < 1e-6):
+                self.logger.warning(
+                    "Computed normalization stats are defaults (-4, 4) or zero frames; check dataset lists and audio."
+                )
+            else:
+                self.logger.info(
+                    f"Computed normalization stats: mean={mean:.4f}, std={std:.4f}, frames={frames}"
+                )
+            # Also write a copy under dataset root for reuse across runs
+            ds_copy = osp.join(self.config.dataset.path, "normalization.json")
+            try:
+                with open(ds_copy, "w", encoding="utf-8") as f2:
+                    json.dump(
+                        {
+                            "mel_log_mean": mean,
+                            "mel_log_std": std,
+                            "frames": frames,
+                            "sample_rate": self.model_config.sample_rate,
+                            "n_mels": self.model_config.n_mels,
+                            "n_fft": self.model_config.n_fft,
+                            "hop_length": self.model_config.hop_length,
+                            "win_length": self.model_config.win_length,
+                        },
+                        f2,
+                    )
+            except Exception as e:
+                self.logger.warning(
+                    f"Failed to write dataset normalization.json: {e}"
+                )
+        except Exception as e:
+            self.logger.warning(f"Failed to write normalization.json: {e}")
