@@ -89,6 +89,16 @@ def ensure_normalization_stats(train: TrainContext, recompute: bool = False) -> 
             logger.info(
                 f"Loaded normalization stats: mean={train.normalization.mel_log_mean:.4f}, std={train.normalization.mel_log_std:.4f}, frames={train.normalization.frames}"
             )
+            if (
+                train.normalization.frames == 0
+                or (
+                    abs(train.normalization.mel_log_mean - (-4.0)) < 1e-6
+                    and abs(train.normalization.mel_log_std - 4.0) < 1e-6
+                )
+            ):
+                logger.warning(
+                    "Normalization stats appear to be defaults (-4, 4) or empty; consider recomputing with --recompute-stats."
+                )
             return
         except Exception as e:
             logger.warning(f"Failed to load normalization.json, will recompute: {e}")
@@ -138,9 +148,14 @@ def ensure_normalization_stats(train: TrainContext, recompute: bool = False) -> 
                 },
                 f,
             )
-        logger.info(
-            f"Computed normalization stats: mean={mean:.4f}, std={std:.4f}, frames={frames}"
-        )
+        if frames == 0 or (abs(mean - (-4.0)) < 1e-6 and abs(std - 4.0) < 1e-6):
+            logger.warning(
+                "Computed normalization stats are defaults (-4, 4) or zero frames; check dataset lists and audio."
+            )
+        else:
+            logger.info(
+                f"Computed normalization stats: mean={mean:.4f}, std={std:.4f}, frames={frames}"
+            )
         # Also write a copy under dataset root for reuse across runs
         ds_copy = osp.join(train.config.dataset.path, "normalization.json")
         try:

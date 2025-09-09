@@ -72,8 +72,8 @@ class BatchManager:
             exit(
                 "--probe_batch must be run with accelerator num_processes set to 1. After running it, distribute the batch_sizes.json files to the log directories and run in DDP"
             )
-        # Use up 400 MiB of VRAM during probing to make our batch size estimates conservative
-        reserve_bytes = 400 * 1024 * 1024  # 500 MiB
+        # Use up x MiB of VRAM during probing to make our batch size estimates conservative
+        reserve_bytes = train.config.training.vram_reserve * 1024 * 1024  # x MiB
         lodestone = torch.empty(reserve_bytes, dtype=torch.uint8, device=train.config.training.device)
 
         train.stage.reset_batch_sizes()
@@ -151,7 +151,12 @@ class BatchManager:
         train.logger.info(
             f"Training on {total_used_time/3600:.2f}h of audio, skipping {total_skipped_time/3600:.2f}h of audio due to OOM"
         )
+
+        del lodestone
+        gc.collect()
+        torch.cuda.empty_cache()
         train.stage.save_batch_sizes()
+
         iterator.close()
 
     def init_epoch(self, train, should_fast_forward=False) -> None:

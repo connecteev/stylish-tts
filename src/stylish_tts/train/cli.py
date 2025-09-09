@@ -336,6 +336,10 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
         to_mel,
         model_config.sample_rate,
     )
+    if frames == 0 or (abs(mean - (-4.0)) < 1e-6 and abs(std - 4.0) < 1e-6):
+        logger.warning(
+            "Normalization stats for export appear to be defaults (-4, 4) or zero frames; ONNX will embed defaults."
+        )
 
     convert_to_onnx(
         model_config,

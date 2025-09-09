@@ -62,6 +62,10 @@ def align_text(config, model_config):
             logger.info(
                 f"Using dataset normalization stats for alignment: mean={norm_mean:.4f}, std={norm_std:.4f}"
             )
+        else:
+            logger.warning(
+                "Dataset normalization.json not found; using default normalization (-4, 4) for alignment."
+            )
     except Exception as e:
         logger.warning(f"Could not load dataset normalization.json: {e}")
 
