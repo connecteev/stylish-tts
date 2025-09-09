@@ -7,7 +7,7 @@ from torch.nn.utils.parametrizations import weight_norm
 from einops import rearrange
 import einops._torch_specific
 from .common import LinearNorm, get_padding
-from utils import sequence_mask
+from stylish_tts.train.utils import sequence_mask
 
 from torchaudio.models import Conformer
 

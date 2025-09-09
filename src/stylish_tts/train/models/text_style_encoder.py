@@ -1,5 +1,5 @@
 import torch
-from utils import sequence_mask
+from stylish_tts.train.utils import sequence_mask
 from .conv_next import BasicConvNeXtBlock
 
 

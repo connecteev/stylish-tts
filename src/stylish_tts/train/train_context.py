@@ -1,12 +1,12 @@
-from stylish_lib.config_loader import Config, ModelConfig
-from batch_manager import BatchManager
+from stylish_tts.lib.config_loader import Config, ModelConfig
+from stylish_tts.train.batch_manager import BatchManager
 from typing import Optional, Any
 import os.path as osp
 from accelerate import Accelerator
 from accelerate import DistributedDataParallelKwargs
 import logging
 from torch.utils.data import DataLoader
-from losses import (
+from stylish_tts.train.losses import (
     GeneratorLoss,
     DiscriminatorLoss,
     WavLMLoss,
@@ -16,10 +16,10 @@ from losses import (
     DurationLoss,
 )
 from torch.utils.tensorboard.writer import SummaryWriter
-from stylish_lib.text_utils import TextCleaner
+from stylish_tts.lib.text_utils import TextCleaner
 import torchaudio
-from utils import DurationProcessor
-from multi_spectrogram import MultiSpectrogram
+from stylish_tts.train.utils import DurationProcessor
+from stylish_tts.train.multi_spectrogram import MultiSpectrogram
 from pathlib import Path
 import traceback
 
@@ -53,7 +53,7 @@ class TrainContext:
         model_config: ModelConfig,
         logger: logging.Logger,
     ) -> None:
-        import stage
+        import stylish_tts.train.stage
 
         self.base_output_dir: str = base_out_dir
         self.out_dir: str = ""

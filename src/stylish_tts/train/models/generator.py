@@ -11,7 +11,7 @@ from .stft import STFT
 from einops import rearrange
 
 import math
-from utils import DecoderPrediction
+from stylish_tts.train.utils import DecoderPrediction
 from .ada_norm import AdaptiveGeneratorBlock
 from .ada_norm import AdaptiveLayerNorm
 from .common import get_padding

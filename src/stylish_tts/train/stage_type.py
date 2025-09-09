@@ -4,8 +4,8 @@ import torch
 from torch.nn import functional as F
 import torchaudio
 from einops import rearrange
-from loss_log import LossLog, build_loss_log
-from utils import print_gpu_vram, log_norm
+from stylish_tts.train.loss_log import LossLog, build_loss_log
+from stylish_tts.train.utils import print_gpu_vram, log_norm
 from typing import List
 
 
@@ -129,8 +129,13 @@ def train_acoustic(
         pred = model.speech_predictor(
             batch.text, batch.text_length, batch.alignment, batch.pitch, energy
         )
+        pe_text_encoding, _, _ = model.pe_text_encoder(batch.text, batch.text_length)
+        pe_mel_style = model.pe_mel_style_encoder(mel.unsqueeze(1))
         pred_pitch, pred_energy = model.pitch_energy_predictor(
-            batch.text, batch.text_length, batch.alignment
+            pe_text_encoding,
+            batch.text_length,
+            batch.alignment,
+            pe_mel_style,
         )
         print_gpu_vram("predicted")
         train.stage.optimizer.zero_grad()
@@ -178,8 +183,10 @@ def train_acoustic(
 def validate_acoustic(batch, train):
     mel, _ = calculate_mel(batch.audio_gt, train.to_mel)
     energy = log_norm(mel.unsqueeze(1)).squeeze(1)
+    pe_text_encoding, _, _ = model.pe_text_encoder(batch.text, batch.text_length)
+    pe_mel_style = model.pe_mel_style_encoder(mel.unsqueeze(1))
     pred_pitch, pred_energy = train.model.pitch_energy_predictor(
-        batch.text, batch.text_length, batch.alignment
+        pe_text_encoding, batch.text_length, batch.alignment, pe_mel_style
     )
     pred = train.model.speech_predictor(
         batch.text, batch.text_length, batch.alignment, batch.pitch, energy

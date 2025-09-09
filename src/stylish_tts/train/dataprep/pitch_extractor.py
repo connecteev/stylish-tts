@@ -8,10 +8,10 @@ from torch.nn import functional as F
 import librosa
 
 from safetensors.torch import save_file
-from dataprep.align_text import audio_list
+from stylish_tts.train.dataprep.align_text import audio_list
 import pyworld
 import tqdm
-from dataloader import get_frame_count, get_time_bin
+from stylish_tts.train.dataloader import get_frame_count, get_time_bin
 from safetensors.torch import save_file
 import onnxruntime as ort
 from huggingface_hub import hf_hub_download

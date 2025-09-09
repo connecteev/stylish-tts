@@ -4,7 +4,7 @@ from torch import nn
 from torch.nn.utils.parametrizations import weight_norm
 from .text_encoder import MultiHeadAttention
 from .prosody_encoder import ProsodyEncoder
-from utils import length_to_mask
+from stylish_tts.train.utils import length_to_mask
 from .ada_norm import AdaptiveLayerNorm, AdaptiveDecoderBlock
 
 

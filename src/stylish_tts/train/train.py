@@ -5,21 +5,26 @@ import shutil
 import logging
 import random
 from logging import StreamHandler
-from stylish_lib.config_loader import load_config_yaml, load_model_config_yaml
-from train_context import TrainContext
+from stylish_tts.lib.config_loader import load_config_yaml, load_model_config_yaml
+from stylish_tts.train.train_context import TrainContext
 import hashlib
 import numpy as np
 from safetensors.torch import save_file
 
-from dataloader import build_dataloader, FilePathDataset
-from batch_manager import BatchManager
-from stage import Stage, is_valid_stage, valid_stage_list
+from stylish_tts.train.dataloader import build_dataloader, FilePathDataset
+from stylish_tts.train.batch_manager import BatchManager
+from stylish_tts.train.stage import Stage, is_valid_stage, valid_stage_list
 
-from models.models import build_model
-from losses import GeneratorLoss, DiscriminatorLoss, WavLMLoss, DurationLoss
-from utils import get_data_path_list, save_git_diff
-from loss_log import combine_logs
-from convert_to_onnx import convert_to_onnx
+from stylish_tts.train.models.models import build_model
+from stylish_tts.train.losses import (
+    GeneratorLoss,
+    DiscriminatorLoss,
+    WavLMLoss,
+    DurationLoss,
+)
+from stylish_tts.train.utils import get_data_path_list, save_git_diff
+from stylish_tts.train.loss_log import combine_logs
+from stylish_tts.train.convert_to_onnx import convert_to_onnx
 import tqdm
 
 import os.path as osp

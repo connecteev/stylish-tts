@@ -1,15 +1,14 @@
 import torch
-from stylish_lib.config_loader import ModelConfig, load_model_config_yaml
-from stylish_lib.text_utils import TextCleaner
+from stylish_tts.lib.config_loader import ModelConfig, load_model_config_yaml
+from stylish_tts.lib.text_utils import TextCleaner
 import torch
 import numpy as np
-import torch
 import onnxruntime as ort
 import click
 from scipy.io.wavfile import write
 import onnx
 from time import perf_counter
-from utils import DurationProcessor
+from stylish_tts.train.utils import DurationProcessor
 
 
 def read_meta_data_onnx(filename, key):

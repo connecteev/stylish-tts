@@ -1,5 +1,5 @@
 import torch
-from stylish_lib.config_loader import ModelConfig
+from stylish_tts.lib.config_loader import ModelConfig
 
 from .text_aligner import tdnn_blstm_ctc_model_base
 
@@ -13,7 +13,7 @@ from .text_style_encoder import TextStyleEncoder
 from .mel_style_encoder import MelStyleEncoder
 from .pitch_energy_predictor import PitchEnergyPredictor
 from .speech_predictor import SpeechPredictor
-from multi_spectrogram import multi_spectrogram_count
+from stylish_tts.train.multi_spectrogram import multi_spectrogram_count
 
 from munch import Munch
 

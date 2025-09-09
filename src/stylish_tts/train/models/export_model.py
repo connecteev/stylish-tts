@@ -12,7 +12,7 @@ class ExportModel(torch.nn.Module):
         pe_text_encoder,
         pe_text_style_encoder,
         device,
-        **kwargs
+        **kwargs,
     ):
         super(ExportModel, self).__init__()
 

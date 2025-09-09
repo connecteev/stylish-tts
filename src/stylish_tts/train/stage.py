@@ -9,10 +9,10 @@ from munch import Munch
 import tqdm
 import matplotlib.pyplot as plt
 
-from loss_log import combine_logs
-from stage_type import stages, is_valid_stage, valid_stage_list
-from optimizers import build_optimizer
-from utils import (
+from stylish_tts.train.loss_log import combine_logs
+from stylish_tts.train.stage_type import stages, is_valid_stage, valid_stage_list
+from stylish_tts.train.optimizers import build_optimizer
+from stylish_tts.train.utils import (
     get_image,
     plot_spectrogram_to_figure,
     plot_mel_signed_difference_to_figure,

@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-from stylish_lib.config_loader import ModelConfig
-from stylish_lib.text_utils import TextCleaner
-from models.export_model import ExportModel
-from models.stft import STFT
-from utils import length_to_mask
+from stylish_tts.lib.config_loader import ModelConfig
+from stylish_tts.lib.text_utils import TextCleaner
+from stylish_tts.train.models.export_model import ExportModel
+from stylish_tts.train.models.stft import STFT
+from stylish_tts.train.utils import length_to_mask
 import onnx
 from torch.export.dynamic_shapes import Dim
 from einops import rearrange

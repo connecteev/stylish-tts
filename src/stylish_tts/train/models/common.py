@@ -1,5 +1,5 @@
 import torch
-from utils import leaky_clamp
+from stylish_tts.train.utils import leaky_clamp
 
 
 def init_weights(m, mean=0.0, std=0.01):

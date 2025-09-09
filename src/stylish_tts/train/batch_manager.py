@@ -2,20 +2,20 @@ import gc
 import traceback
 import torch
 from typing import Optional, Dict, List
-from dataloader import (
+from stylish_tts.train.dataloader import (
     FilePathDataset,
     build_dataloader,
     get_frame_count,
     get_padded_time_bin,
 )
-import utils
+import stylish_tts.train.utils as utils
 from accelerate.accelerator import Accelerator
-from stylish_lib.text_utils import TextCleaner
+from stylish_tts.lib.text_utils import TextCleaner
 from torch.utils.data import DataLoader
 import tqdm
 import logging
-from stylish_lib.config_loader import DatasetConfig
-from loss_log import LossLog
+from stylish_tts.lib.config_loader import DatasetConfig
+from stylish_tts.train.loss_log import LossLog
 
 logger = logging.getLogger(__name__)
 

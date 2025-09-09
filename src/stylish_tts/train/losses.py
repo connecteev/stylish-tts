@@ -8,7 +8,7 @@ from transformers import AutoModel
 import numpy as np
 import k2
 from einops import rearrange
-from multi_spectrogram import multi_spectrogram_count
+from stylish_tts.train.multi_spectrogram import multi_spectrogram_count
 
 
 class MultiResolutionSTFTLoss(torch.nn.Module):

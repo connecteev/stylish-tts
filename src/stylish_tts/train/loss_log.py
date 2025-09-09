@@ -2,7 +2,7 @@ from __future__ import annotations
 import logging
 import torch
 from typing import Optional
-import train_context
+import stylish_tts.train.train_context
 
 logger = logging.getLogger(__name__)
 

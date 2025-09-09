@@ -1,8 +1,9 @@
 import os.path as osp
 import click
 import importlib.resources
-from stylish_lib.config_loader import load_config_yaml, load_model_config_yaml
-import config
+
+from stylish_tts.lib.config_loader import load_config_yaml, load_model_config_yaml
+import stylish_tts.train.config as config
 
 
 def get_config(config_path):
@@ -85,7 +86,7 @@ def train_align(config_path, model_config_path, out, checkpoint, reset_stage):
     print("Train alignment...")
     config = get_config(config_path)
     model_config = get_model_config(model_config_path)
-    from train import train_model
+    from stylish_tts.train.train import train_model
 
     train_model(
         config,
@@ -125,7 +126,7 @@ def align(config_path, model_config_path):
     print("Calculate alignment...")
     config = get_config(config_path)
     model_config = get_model_config(model_config_path)
-    from dataprep.align_text import align_text
+    from stylish_tts.train.dataprep.align_text import align_text
 
     align_text(config, model_config)
 
@@ -169,7 +170,7 @@ def pitch(config_path, model_config_path, workers, method):
     print("Calculate pitch...")
     config = get_config(config_path)
     model_config = get_model_config(model_config_path)
-    from dataprep.pitch_extractor import calculate_pitch
+    from stylish_tts.train.dataprep.pitch_extractor import calculate_pitch
 
     calculate_pitch(config, model_config, method, workers)
 
@@ -219,7 +220,7 @@ def train(config_path, model_config_path, out, stage, checkpoint, reset_stage):
     print("Train model...")
     config = get_config(config_path)
     model_config = get_model_config(model_config_path)
-    from train import train_model
+    from stylish_tts.train.train import train_model
 
     train_model(
         config,
@@ -268,13 +269,13 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
     config = get_config(config_path)
     model_config = get_model_config(model_config_path)
 
-    from train_context import Manifest
-    from convert_to_onnx import convert_to_onnx
-    from models.models import build_model
-    from utils import DurationProcessor
+    from stylish_tts.train.train_context import Manifest
+    from stylish_tts.train.convert_to_onnx import convert_to_onnx
+    from stylish_tts.train.models.models import build_model
+    from stylish_tts.train.utils import DurationProcessor
     from accelerate import Accelerator
     from accelerate import DistributedDataParallelKwargs
-    from losses import DiscriminatorLoss
+    from stylish_tts.train.losses import DiscriminatorLoss
 
     duration_processor = DurationProcessor(
         class_count=model_config.duration_predictor.duration_classes,
@@ -314,9 +315,3 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
         config.training.device,
         duration_processor,
     )
-
-
-##############################################################################
-
-if __name__ == "__main__":
-    cli()

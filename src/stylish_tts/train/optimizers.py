@@ -3,7 +3,7 @@ import torch
 from torch.optim import AdamW, lr_scheduler, Optimizer
 import logging
 import transformers
-from losses import DiscriminatorLoss
+from stylish_tts.train.losses import DiscriminatorLoss
 from typing import Dict
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ class MultiOptimizer:
         *,
         optimizers: Dict[str, Optimizer],
         schedulers: Dict[str, lr_scheduler.LRScheduler],
-        discriminator_loss: DiscriminatorLoss
+        discriminator_loss: DiscriminatorLoss,
     ):
         self.optimizers = optimizers
         self.schedulers = schedulers
