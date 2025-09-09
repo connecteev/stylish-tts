@@ -4,7 +4,10 @@ import importlib.resources
 
 from stylish_tts.lib.config_loader import load_config_yaml, load_model_config_yaml
 import stylish_tts.train.config as config
+import logging
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def get_config(config_path):
     if osp.exists(config_path):
@@ -212,7 +215,13 @@ def pitch(config_path, model_config_path, workers, method):
     is_flag=True,
     help="If loading a checkpoint, do not skip epochs and data.",
 )
-def train(config_path, model_config_path, out, stage, checkpoint, reset_stage):
+@click.option(
+    "--recompute-stats",
+    "recompute_stats",
+    is_flag=True,
+    help="Force recomputation of dataset normalization stats at start.",
+)
+def train(config_path, model_config_path, out, stage, checkpoint, reset_stage, recompute_stats):
     """Train a model
 
     <config_path> is your main configuration file. Train a Stylish TTS model. You must have already precached alignment and pitch information for the dataset. Stage should be 'acoustic' to begin with unless you are loading a checkpoint.
@@ -231,6 +240,7 @@ def train(config_path, model_config_path, out, stage, checkpoint, reset_stage):
         reset_stage,
         config_path,
         model_config_path,
+        recompute_stats,
     )
 
 
@@ -307,6 +317,26 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
 
     accelerator.load_state(checkpoint)
 
+    # Compute normalization stats for embedding in ONNX metadata
+    from stylish_tts.train.utils import compute_log_mel_stats, get_data_path_list
+    train_list = get_data_path_list(
+        osp.join(config.dataset.path, config.dataset.train_data)
+    )
+    import torchaudio
+    to_mel = torchaudio.transforms.MelSpectrogram(
+        n_mels=model_config.n_mels,
+        n_fft=model_config.n_fft,
+        win_length=model_config.win_length,
+        hop_length=model_config.hop_length,
+        sample_rate=model_config.sample_rate,
+    )
+    mean, std, frames = compute_log_mel_stats(
+        train_list,
+        osp.join(config.dataset.path, config.dataset.wav_path),
+        to_mel,
+        model_config.sample_rate,
+    )
+
     convert_to_onnx(
         model_config,
         duration,
@@ -315,3 +345,7 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
         config.training.device,
         duration_processor,
     )
+    # Embed normalization stats into ONNX metadata
+    from stylish_tts.train.convert_to_onnx import add_meta_data_onnx
+    add_meta_data_onnx(speech, "mel_log_mean", str(mean))
+    add_meta_data_onnx(speech, "mel_log_std", str(std))

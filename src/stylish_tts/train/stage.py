@@ -248,9 +248,9 @@ class Stage:
                         if mel_gt_np is not None and mel_pred_log_np is not None:
                             if self.name != "duration":
                                 try:
-                                    # Define or retrieve mean and std
-                                    dataset_mean = -4.0
-                                    dataset_std = 4.0
+                                    # Use computed dataset normalization stats
+                                    dataset_mean = train.normalization.mel_log_mean
+                                    dataset_std = train.normalization.mel_log_std
 
                                     fig_mel_signed_diff = plot_mel_signed_difference_to_figure(
                                         mel_gt_np,  # Already normalized log mel

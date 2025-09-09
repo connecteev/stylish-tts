@@ -44,6 +44,24 @@ class Manifest:
                 setattr(self, key, value)
 
 
+class NormalizationStats:
+    def __init__(self) -> None:
+        self.mel_log_mean: float = -4.0
+        self.mel_log_std: float = 4.0
+        self.frames: int = 0
+
+    def state_dict(self) -> dict:
+        return {
+            "mel_log_mean": float(self.mel_log_mean),
+            "mel_log_std": float(self.mel_log_std),
+            "frames": int(self.frames),
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        self.mel_log_mean = float(state.get("mel_log_mean", -4.0))
+        self.mel_log_std = float(state.get("mel_log_std", 4.0))
+        self.frames = int(state.get("frames", 0))
+
 class TrainContext:
     def __init__(
         self,
@@ -63,6 +81,7 @@ class TrainContext:
         self.batch_manager: Optional[BatchManager] = None
         self.stage: Optional[stage.Stage] = None
         self.manifest: Manifest = Manifest()
+        self.normalization: NormalizationStats = NormalizationStats()
         self.writer: Optional[SummaryWriter] = None
 
         ddp_kwargs = DistributedDataParallelKwargs(
@@ -84,6 +103,7 @@ class TrainContext:
         self.accelerator.register_for_checkpointing(self.config)
         self.accelerator.register_for_checkpointing(self.model_config)
         self.accelerator.register_for_checkpointing(self.manifest)
+        self.accelerator.register_for_checkpointing(self.normalization)
 
         self.val_dataloader: Optional[DataLoader] = None
 
