@@ -81,12 +81,12 @@ class FilePathDataset(torch.utils.data.Dataset):
         )
         for data in iterator:
             wave_path = data[0]
-            wave, sr = sf.read(osp.join(self.root_path, wave_path))
-            wave_len = wave.shape[0]
-            if sr != self.sample_rate:
-                wave_len *= self.sample_rate / sr
-            sample_lengths.append(wave_len)
-            total_audio_length += wave_len / sr
+            info = sf.info(osp.join(self.root_path, wave_path))
+            frames = info.frames
+            if info.samplerate != self.sample_rate:
+                frames = int(info.frames * self.sample_rate / info.samplerate)
+            sample_lengths.append(frames)
+            total_audio_length += frames / info.samplerate
         iterator.clear()
         iterator.close()
         time_bins = {}

@@ -72,11 +72,10 @@ class BatchManager:
             exit(
                 "--probe_batch must be run with accelerator num_processes set to 1. After running it, distribute the batch_sizes.json files to the log directories and run in DDP"
             )
+        # Use up 400 MiB of VRAM during probing to make our batch size estimates conservative
+        reserve_bytes = 400 * 1024 * 1024  # 500 MiB
+        lodestone = torch.empty(reserve_bytes, dtype=torch.uint8, device=train.config.training.device)
 
-        # Use up 200 MB of VRAM during probing to make our batch size estimates conservative
-        lodestone = torch.zeros(
-            [50, 1000, 1000], dtype=torch.float, device=train.config.training.device
-        )
         train.stage.reset_batch_sizes()
         batch_size = self.probe_batch_max
         time_keys = sorted(list(self.time_bins.keys()))
