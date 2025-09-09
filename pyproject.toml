@@ -1,10 +1,21 @@
 [project]
 name = "stylish-tts"
 version = "0.1.0"
+license = "MIT"
 description = "Stylish TTS is a training system and model architecture for high quality and fast single-speaker TTS models."
+keywords = ["tts", "text to speech", "machine learning", "training"]
 readme = "README.md"
 authors = [
     { name = "Jonathon Duerig", email = "" }
+]
+classifiers = [
+	"Development Status :: 4 - Beta",
+	"Intended Audience :: Developers",
+	"Programming Language :: Python :: 3",
+	"Environment :: GPU :: NVIDIA CUDA :: 12",
+	"License :: OSI Approved :: MIT License",
+	"Topic :: Multimedia :: Sound/Audio :: Sound Synthesis",
+	"Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -29,6 +40,9 @@ dependencies = [
     "resampy>=0.4.3",
 	"click>=8.1.8",
 ]
+
+[project.urls]
+Repository = "https://github.com/Stylish-TTS/stylish-tts"
 
 [project.scripts]
 stylish-train = "stylish_tts:train_cli"
