@@ -90,8 +90,8 @@ The plaintext is the original text of your utterance before phonemization. It do
 Stylish TTS uses a pre-cached ground truth pitch (F0) for all your segments. To generate these pitches, run:
 
 ```
-cd stylish-tts/train
-uv run stylish_train/cli.py pitch /path/to/your/config.yml --workers 16
+cd stylish-tts
+uv run stylish-train pitch /path/to/your/config.yml --workers 16
 ```
 
 The number of workers should be approximately equal to the number of cores you have. By default, Harvest is used to extract pitch which is a CPU-based system. If you find this too slow, there is also a GPU-based option available by passing `--method rmvpe` on the command line. When finished, it will write the pre-cached pitches at the file specified by your `config.yml`.
@@ -111,15 +111,15 @@ At each validation step, both an un-adjusted align_loss and a confidence score a
 During alignment pre-training, we ALSO train on the validation set. This is usually a very very bad thing in ML. But in this case, the alignment model will never be used for aligning out-of-distribution segments. Doing this gives us a more representative sample for acoustic and textual training and does not have any other effects on overall training.
 
 ```
-cd stylish-tts/train
-uv run stylish_train/cli.py train-align /path/to/your/config.yml --out /path/to/your/output
+cd stylish-tts
+uv run stylish-train train-align /path/to/your/config.yml --out /path/to/your/output
 ```
 
 The `--out` option is where logs and checkpoints will end up. Once the alignment stage completes, it will provide a trained model at the file specified in your `config.yml`. It is important to realize that this is a MODEL, not the alignments themselves. We will use this model to generate the alignments.
 
 ```
-cd stylish-tts/train
-uv run stylish_train/cli.py align /path/to/your/config.yml
+cd stylish-tts
+uv run stylish-train align /path/to/your/config.yml
 ```
 
 This generates the actual cached alignments for all the segments for both training and validation data as configured in your config.yml. You should now add the resulting alignment.safetensors path to your config.yml.
@@ -135,8 +135,8 @@ All of the commands above should only need to be done once per dataset as long a
 Here is a typical command to start off a new training run using a single machine.
 
 ```
-cd stylish-tts/train
-uv run stylish_train/cli.py train /path/to/your/config.yml --out /path/to/your/output
+cd stylish-tts
+uv run stylish-train train /path/to/your/config.yml --out /path/to/your/output
 ```
 
 --out: This is the destination path for all checkpoints, training logs, and tensorboard data. A separate sub-directory is created for each stage of training. Make sure to have plenty of disk space available here as checkpoints can take a large amount of storage.
@@ -183,8 +183,8 @@ When you listen to samples, you will get the same version you'd expect to hear d
 ## Loading a checkpoint
 
 ```
-cd stylish-tts/train
-uv run stylish_train/cli.py train \
+cd stylish-tts
+uv run stylish-train train \
     /path/to/your/config.yml \
     --stage <stage>
     --out /path/to/your/output \
@@ -199,8 +199,8 @@ Note that Stylish TTS checkpoints are not compatible with StyleTTS 2 checkpoints
 This command will export two ONNX files, one for predicting duration and the other for predicting speech.
 
 ```sh
-cd stylish-tts/train
-uv run stylish_train/cli.py convert \
+cd stylish-tts
+uv run stylish-train convert \
     /path/to/your/config.yml \
     --duration /path/to/your/duration.onnx
     --speech /path/to/your/speech.onnx \
@@ -209,8 +209,8 @@ uv run stylish_train/cli.py convert \
 
 Using the ONNX model:
 ```sh
-cd stylish-tts/train
-uv run stylish_train/test_onnx.py
+cd stylish-tts
+uv run stylish-tts/train/test_onnx.py
     --speech /path/to/your/output/speech.onnx \
     --duration /path/to/your/output/duration.onnx \
     --text "ðˈiːz wˈɜː tˈuː hˈæv ˈæn ɪnˈɔːɹməs ˈɪmpækt , nˈɑːt ˈoʊnliː bɪkˈɔz ðˈeɪ wˈɜː əsˈoʊsiːˌeɪtᵻd wˈɪð kˈɑːnstəntˌiːn ," \
