@@ -53,6 +53,7 @@ def align_text(config, model_config):
     # Try to load dataset normalization stats if available
     try:
         import json
+
         stats_path = pathlib.Path(config.dataset.path) / "normalization.json"
         if stats_path.exists():
             with stats_path.open("r", encoding="utf-8") as f:

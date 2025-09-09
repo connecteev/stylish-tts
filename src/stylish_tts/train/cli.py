@@ -9,6 +9,7 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def get_config(config_path):
     if osp.exists(config_path):
         config = load_config_yaml(config_path)
@@ -312,10 +313,12 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
 
     # Compute normalization stats for embedding in ONNX metadata
     from stylish_tts.train.utils import compute_log_mel_stats, get_data_path_list
+
     train_list = get_data_path_list(
         osp.join(config.dataset.path, config.dataset.train_data)
     )
     import torchaudio
+
     to_mel = torchaudio.transforms.MelSpectrogram(
         n_mels=model_config.n_mels,
         n_fft=model_config.n_fft,
@@ -344,5 +347,6 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
     )
     # Embed normalization stats into ONNX metadata
     from stylish_tts.train.convert_to_onnx import add_meta_data_onnx
+
     add_meta_data_onnx(speech, "mel_log_mean", str(mean))
     add_meta_data_onnx(speech, "mel_log_std", str(std))

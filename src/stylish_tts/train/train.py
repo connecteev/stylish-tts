@@ -89,12 +89,9 @@ def ensure_normalization_stats(train: TrainContext) -> None:
             logger.info(
                 f"Loaded normalization stats: mean={train.normalization.mel_log_mean:.4f}, std={train.normalization.mel_log_std:.4f}, frames={train.normalization.frames}"
             )
-            if (
-                train.normalization.frames == 0
-                or (
-                    abs(train.normalization.mel_log_mean - (-4.0)) < 1e-6
-                    and abs(train.normalization.mel_log_std - 4.0) < 1e-6
-                )
+            if train.normalization.frames == 0 or (
+                abs(train.normalization.mel_log_mean - (-4.0)) < 1e-6
+                and abs(train.normalization.mel_log_std - 4.0) < 1e-6
             ):
                 logger.warning(
                     "Normalization stats appear to be defaults (-4, 4) or empty; delete normalization.json to trigger recompute."
@@ -113,6 +110,7 @@ def ensure_normalization_stats(train: TrainContext) -> None:
     try:
         if train.accelerator.is_main_process:
             import tqdm as _tqdm
+
             iterator = _tqdm.tqdm(
                 train_list,
                 desc="Computing normalization stats",

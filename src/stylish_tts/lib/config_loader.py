@@ -24,7 +24,8 @@ class TrainingConfig(BaseModel):
     device: str = Field(..., description="Computational device (e.g., 'cuda').")
     mixed_precision: str = Field(..., description="accelerator use bf16 or fp16 or no")
     vram_reserve: int = Field(
-        default=200, description="Reserve VRAM buffer during batch probing to avoid OOMs (in MiB)."
+        default=200,
+        description="Reserve VRAM buffer during batch probing to avoid OOMs (in MiB).",
     )
 
 

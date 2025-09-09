@@ -74,7 +74,9 @@ class BatchManager:
             )
         # Use up x MiB of VRAM during probing to make our batch size estimates conservative
         reserve_bytes = train.config.training.vram_reserve * 1024 * 1024  # x MiB
-        lodestone = torch.empty(reserve_bytes, dtype=torch.uint8, device=train.config.training.device)
+        lodestone = torch.empty(
+            reserve_bytes, dtype=torch.uint8, device=train.config.training.device
+        )
 
         train.stage.reset_batch_sizes()
         batch_size = self.probe_batch_max

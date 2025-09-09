@@ -62,6 +62,7 @@ class NormalizationStats:
         self.mel_log_std = float(state.get("mel_log_std", 4.0))
         self.frames = int(state.get("frames", 0))
 
+
 class TrainContext:
     def __init__(
         self,
