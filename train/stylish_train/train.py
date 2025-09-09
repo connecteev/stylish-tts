@@ -270,10 +270,11 @@ def train_model(
             if not osp.exists(train.out_dir):
                 exit(f"Failed to create or find log directory at {train.out_dir}.")
             shutil.copy(config_path, osp.join(train.out_dir, osp.basename(config_path)))
-            shutil.copy(
-                model_config_path,
-                osp.join(train.out_dir, osp.basename(model_config_path)),
-            )
+            if len(model_config_path) > 0:
+                shutil.copy(
+                    model_config_path,
+                    osp.join(train.out_dir, osp.basename(model_config_path)),
+                )
             save_git_diff(train.out_dir)
             if train.accelerator.is_main_process:
                 assert train.writer is not None
