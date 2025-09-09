@@ -72,14 +72,14 @@ class LoggerManager:
         self.file_handler = self.add_file_handler(logger, out_dir)
 
 
-def ensure_normalization_stats(train: TrainContext, recompute: bool = False) -> None:
+def ensure_normalization_stats(train: TrainContext) -> None:
     """Ensure normalization stats exist in the run directory and context.
 
     If a cached file exists and recompute=False, load it. Otherwise compute
     stats from the training split using the current mel transform and save.
     """
     out_path = osp.join(train.out_dir, "normalization.json")
-    if not recompute and osp.exists(out_path):
+    if osp.exists(out_path):
         try:
             with open(out_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -97,7 +97,7 @@ def ensure_normalization_stats(train: TrainContext, recompute: bool = False) -> 
                 )
             ):
                 logger.warning(
-                    "Normalization stats appear to be defaults (-4, 4) or empty; consider recomputing with --recompute-stats."
+                    "Normalization stats appear to be defaults (-4, 4) or empty; delete normalization.json to trigger recompute."
                 )
             return
         except Exception as e:
@@ -188,7 +188,6 @@ def train_model(
     reset_stage,
     config_path,
     model_config_path,
-    recompute_stats=False,
 ):
     convert = False
     np.random.seed(1)
@@ -294,7 +293,7 @@ def train_model(
     )
 
     # Compute or load dataset normalization stats
-    ensure_normalization_stats(train, recompute=recompute_stats)
+    ensure_normalization_stats(train)
 
     # build model
     train.model = build_model(train.model_config)

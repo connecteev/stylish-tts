@@ -215,13 +215,7 @@ def pitch(config_path, model_config_path, workers, method):
     is_flag=True,
     help="If loading a checkpoint, do not skip epochs and data.",
 )
-@click.option(
-    "--recompute-stats",
-    "recompute_stats",
-    is_flag=True,
-    help="Force recomputation of dataset normalization stats at start.",
-)
-def train(config_path, model_config_path, out, stage, checkpoint, reset_stage, recompute_stats):
+def train(config_path, model_config_path, out, stage, checkpoint, reset_stage):
     """Train a model
 
     <config_path> is your main configuration file. Train a Stylish TTS model. You must have already precached alignment and pitch information for the dataset. Stage should be 'acoustic' to begin with unless you are loading a checkpoint.
@@ -240,7 +234,6 @@ def train(config_path, model_config_path, out, stage, checkpoint, reset_stage, r
         reset_stage,
         config_path,
         model_config_path,
-        recompute_stats,
     )
 
 
