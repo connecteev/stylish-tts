@@ -294,10 +294,14 @@ def train_textual(
             ).squeeze(1)
         train.stage.optimizer.zero_grad()
         log = build_loss_log(train)
-        target_spec, pred_spec, _, _ = train.multi_spectrogram(
+        target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
             target=batch.audio_gt, pred=pred.audio.squeeze(1)
         )
         train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
+        log.add_loss(
+            "multi_phase",
+            multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
+        )
         log.add_loss(
             "generator",
             train.generator_loss(
