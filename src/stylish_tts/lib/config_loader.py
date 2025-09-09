@@ -127,8 +127,11 @@ class LossWeightConfig(BaseModel):
         ..., description="Weight for duration cross-entropy loss."
     )
     style: float = Field(..., description="Weight for style reconstruction loss.")
-    mag: float = Field(..., description="Weight for magnitude loss.")
-    phase: float = Field(..., description="Weight for phase (y) loss.")
+    mag: float = Field(..., description="Weight for magnitude prediction loss.")
+    phase: float = Field(..., description="Weight for phase prediction loss.")
+    multi_phase: float = Field(
+        ..., description="Weight for multi-resolution phase loss."
+    )
     confidence: float = Field(..., description="Weight for alignment confidence")
     align_loss: float = Field(..., description="Weight for alignment loss")
     discriminator: float = Field(..., description="Weight for discriminator loss")

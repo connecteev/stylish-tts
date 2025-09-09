@@ -7,7 +7,7 @@ from einops import rearrange
 from stylish_tts.train.loss_log import LossLog, build_loss_log
 from stylish_tts.train.utils import print_gpu_vram, log_norm
 from typing import List
-
+from stylish_tts.train.losses import multi_phase_loss
 
 stages = {}
 
@@ -160,10 +160,14 @@ def train_acoustic(
         train.stage.optimizer.zero_grad()
 
         log = build_loss_log(train)
-        target_spec, pred_spec = train.multi_spectrogram(
+        target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
             target=batch.audio_gt, pred=pred.audio.squeeze(1)
         )
         train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
+        log.add_loss(
+            "multi_phase",
+            multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
+        )
         print_gpu_vram("stft_loss")
         log.add_loss(
             "generator",
@@ -211,8 +215,8 @@ def validate_acoustic(batch, train):
         train.normalization.mel_log_mean,
         train.normalization.mel_log_std,
     ).squeeze(1)
-    pe_text_encoding, _, _ = model.pe_text_encoder(batch.text, batch.text_length)
-    pe_mel_style = model.pe_mel_style_encoder(mel.unsqueeze(1))
+    pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
+    pe_mel_style = train.model.pe_mel_style_encoder(mel.unsqueeze(1))
     pred_pitch, pred_energy = train.model.pitch_energy_predictor(
         pe_text_encoding, batch.text_length, batch.alignment, pe_mel_style
     )
@@ -220,7 +224,7 @@ def validate_acoustic(batch, train):
         batch.text, batch.text_length, batch.alignment, batch.pitch, energy
     )
     log = build_loss_log(train)
-    target_spec, pred_spec = train.multi_spectrogram(
+    target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
         target=batch.audio_gt, pred=pred.audio.squeeze(1)
     )
     train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
@@ -231,6 +235,10 @@ def validate_acoustic(batch, train):
     log.add_loss(
         "energy",
         torch.nn.functional.smooth_l1_loss(energy, pred_energy),
+    )
+    log.add_loss(
+        "multi_phase",
+        multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
     )
     return log, batch.alignment[0], make_list(pred.audio), batch.audio_gt
 
@@ -332,10 +340,14 @@ def validate_textual(batch, train):
         train.normalization.mel_log_std,
     ).squeeze(1)
     log = build_loss_log(train)
-    target_spec, pred_spec = train.multi_spectrogram(
+    target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
         target=batch.audio_gt, pred=pred.audio.squeeze(1)
     )
     train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
+    log.add_loss(
+        "multi_phase",
+        multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
+    )
     log.add_loss(
         "pitch",
         torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
@@ -429,10 +441,14 @@ def validate_style(batch, train):
         train.normalization.mel_log_std,
     ).squeeze(1)
     log = build_loss_log(train)
-    target_spec, pred_spec = train.multi_spectrogram(
+    target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
         target=batch.audio_gt, pred=pred.audio.squeeze(1)
     )
     train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
+    log.add_loss(
+        "multi_phase",
+        multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
+    )
     log.add_loss(
         "pitch",
         torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
@@ -591,10 +607,14 @@ def train_joint(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.T
         train.stage.optimizer.zero_grad()
 
         log = build_loss_log(train)
-        target_spec, pred_spec = train.multi_spectrogram(
+        target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
             target=batch.audio_gt, pred=pred.audio.squeeze(1)
         )
         train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
+        log.add_loss(
+            "multi_phase",
+            multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
+        )
         print_gpu_vram("stft_loss")
         log.add_loss(
             "generator",
@@ -657,10 +677,14 @@ def validate_joint(batch, train):
         train.normalization.mel_log_std,
     ).squeeze(1)
     log = build_loss_log(train)
-    target_spec, pred_spec = train.multi_spectrogram(
+    target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
         target=batch.audio_gt, pred=pred.audio.squeeze(1)
     )
     train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
+    log.add_loss(
+        "multi_phase",
+        multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
+    )
     log.add_loss(
         "pitch",
         torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
