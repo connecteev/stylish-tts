@@ -304,17 +304,14 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
 
     disc_loss = DiscriminatorLoss(mrd=model.mrd)
 
+    from stylish_tts.train.train_context import NormalizationStats
+    norm = NormalizationStats()
     accelerator.register_for_checkpointing(config)
     accelerator.register_for_checkpointing(model_config)
     accelerator.register_for_checkpointing(manifest)
     accelerator.register_for_checkpointing(disc_loss)
-
-    accelerator.load_state(checkpoint)
-
-    # Load normalization stats from checkpoint for embedding into ONNX metadata
-    from stylish_tts.train.train_context import NormalizationStats
-    norm = NormalizationStats()
     accelerator.register_for_checkpointing(norm)
+
     accelerator.load_state(checkpoint)
 
     convert_to_onnx(
