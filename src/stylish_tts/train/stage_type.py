@@ -229,16 +229,16 @@ def validate_acoustic(batch, train):
     )
     train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
     log.add_loss(
+        "multi_phase",
+        multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
+    )
+    log.add_loss(
         "pitch",
         torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
     )
     log.add_loss(
         "energy",
         torch.nn.functional.smooth_l1_loss(energy, pred_energy),
-    )
-    log.add_loss(
-        "multi_phase",
-        multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
     )
     return log, batch.alignment[0], make_list(pred.audio), batch.audio_gt
 
@@ -450,10 +450,6 @@ def validate_style(batch, train):
     )
     train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
     log.add_loss(
-        "multi_phase",
-        multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
-    )
-    log.add_loss(
         "pitch",
         torch.nn.functional.smooth_l1_loss(batch.pitch, pred_pitch),
     )
@@ -604,9 +600,6 @@ def train_joint(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.T
         pred = model.speech_predictor(
             batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
         )
-        # pred_pitch, pred_energy = model.pitch_energy_predictor(
-        #     batch.text, batch.text_length, batch.alignment
-        # )
         print_gpu_vram("predicted")
         train.stage.optimizer.zero_grad()
 
