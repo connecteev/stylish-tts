@@ -67,13 +67,79 @@ def length_to_mask(lengths, max_length) -> torch.Tensor:
 
 
 # for norm consistency loss
-def log_norm(x, mean=-4, std=4, dim=2):
+def log_norm(x, mean, std, dim=2):
     """
     normalized log mel -> mel -> norm -> log(norm)
     """
     # x = torch.log(torch.exp(x * std + mean).norm(dim=dim))
     x = (torch.exp(x * std + mean) ** 0.33).sum(dim=dim)
     return x
+
+
+@torch.no_grad()
+def compute_log_mel_stats(
+    file_lines,
+    wav_root,
+    to_mel,
+    sample_rate: int,
+):
+    """Compute dataset-wide mean/std of log-mel values.
+
+    Args:
+        file_lines: Iterable[str] of dataset lines `<wav>|<phonemes>|<speaker>|<text>`
+        wav_root: Base directory for wav files
+        to_mel: A torchaudio MelSpectrogram module configured for the dataset
+        sample_rate: Target sample rate
+
+    Returns:
+        (mean, std, total_frames)
+    """
+    import os.path as osp
+    import soundfile as sf
+    import librosa
+
+    count = 0
+    sum_x = torch.zeros((), dtype=torch.float64)
+    sum_x2 = torch.zeros((), dtype=torch.float64)
+    # Determine device of the mel transform (defaults to CPU if no buffers)
+    try:
+        buf_iter = to_mel.buffers()
+        first_buf = next(buf_iter, None)
+        mel_device = first_buf.device if first_buf is not None else torch.device("cpu")
+    except Exception:
+        mel_device = torch.device("cpu")
+
+    for line in file_lines:
+        parts = line.strip().split("|")
+        if len(parts) < 1:
+            continue
+        wav_rel = parts[0]
+        wav_path = osp.join(wav_root, wav_rel)
+        try:
+            wave, sr = sf.read(wav_path)
+        except Exception:
+            continue
+        if wave.ndim == 2:
+            wave = wave[:, 0]
+        if sr != sample_rate:
+            wave = librosa.resample(wave, orig_sr=sr, target_sr=sample_rate)
+        wave_t = torch.from_numpy(wave).float().to(mel_device)
+        mel = to_mel(wave_t)
+        log_mel = torch.log(1e-5 + mel)
+        # Accumulate on CPU in float64 for numerical stability
+        count += int(log_mel.numel())
+        sum_x += log_mel.sum(dtype=torch.float64).cpu()
+        sum_x2 += (log_mel * log_mel).sum(dtype=torch.float64).cpu()
+
+    if count == 0:
+        return -4.0, 4.0, 0
+    mean = sum_x / count
+    if count > 1:
+        var = (sum_x2 - count * mean * mean) / (count - 1)
+    else:
+        var = torch.tensor(16.0, dtype=torch.float64)
+    std = torch.sqrt(torch.clamp(var, min=1e-12))
+    return float(mean.item()), float(std.item()), int(count)
 
 
 def plot_spectrogram_to_figure(

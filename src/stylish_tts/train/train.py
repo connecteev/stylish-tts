@@ -29,6 +29,7 @@ import tqdm
 
 import os.path as osp
 import os
+import json
 
 logging.basicConfig(
     level=logging.INFO,
@@ -229,6 +230,9 @@ def train_model(
             train.stage.begin_stage(stage, train)
         logger.info(f"Loaded last checkpoint at {checkpoint} ...")
 
+    # Compute or load dataset normalization stats (after checkpoint load so we can reuse)
+    train.init_normalization()
+
     train.manifest.stage = stage
 
     if convert:
@@ -281,6 +285,24 @@ def train_model(
                     osp.join(train.out_dir, osp.basename(model_config_path)),
                 )
             save_git_diff(train.out_dir)
+            # Copy normalization stats into the new stage directory
+            try:
+                with open(osp.join(train.out_dir, "normalization.json"), "w", encoding="utf-8") as f:
+                    json.dump(
+                        {
+                            "mel_log_mean": train.normalization.mel_log_mean,
+                            "mel_log_std": train.normalization.mel_log_std,
+                            "frames": train.normalization.frames,
+                            "sample_rate": train.model_config.sample_rate,
+                            "n_mels": train.model_config.n_mels,
+                            "n_fft": train.model_config.n_fft,
+                            "hop_length": train.model_config.hop_length,
+                            "win_length": train.model_config.win_length,
+                        },
+                        f,
+                    )
+            except Exception:
+                pass
             if train.accelerator.is_main_process:
                 assert train.writer is not None
                 train.writer.close()

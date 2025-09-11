@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 # TODO: Merge this to_mel implementation with the one in stage_type
 to_mel = None
+norm_mean = -4.0
+norm_std = 4.0
 
 
 def align_text(config, model_config):
@@ -38,7 +40,7 @@ def align_text(config, model_config):
     model = root / config.dataset.alignment_model_path
     device = config.training.device
 
-    global to_mel
+    global to_mel, norm_mean, norm_std
 
     to_mel = torchaudio.transforms.MelSpectrogram(
         n_mels=80,  # align seems to perform worse on higher n_mels
@@ -47,6 +49,26 @@ def align_text(config, model_config):
         hop_length=model_config.hop_length,
         sample_rate=model_config.sample_rate,
     )
+
+    # Try to load dataset normalization stats if available
+    try:
+        import json
+
+        stats_path = pathlib.Path(config.dataset.path) / "normalization.json"
+        if stats_path.exists():
+            with stats_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            norm_mean = float(data.get("mel_log_mean", -4.0))
+            norm_std = float(data.get("mel_log_std", 4.0))
+            logger.info(
+                f"Using dataset normalization stats for alignment: mean={norm_mean:.4f}, std={norm_std:.4f}"
+            )
+        else:
+            logger.warning(
+                "Dataset normalization.json not found; using default normalization (-4, 4) for alignment."
+            )
+    except Exception as e:
+        logger.warning(f"Could not load dataset normalization.json: {e}")
 
     aligner_dict = load_file(model, device=device)
     aligner = tdnn_blstm_ctc_model_base(
@@ -88,10 +110,9 @@ def align_text(config, model_config):
 
 
 def preprocess(wave):
-    mean, std = -4, 4
     wave_tensor = torch.from_numpy(wave).float()
     mel_tensor = to_mel(wave_tensor)
-    mel_tensor = (torch.log(1e-5 + mel_tensor.unsqueeze(0)) - mean) / std
+    mel_tensor = (torch.log(1e-5 + mel_tensor.unsqueeze(0)) - norm_mean) / norm_std
     mel_tensor = mel_tensor[:, :, :-1]
     return mel_tensor
 

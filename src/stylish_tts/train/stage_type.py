@@ -54,7 +54,12 @@ def train_alignment(
     batch, model, train, probing
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:
     log = build_loss_log(train)
-    mel, mel_length = calculate_mel(batch.audio_gt, train.to_align_mel)
+    mel, mel_length = calculate_mel(
+        batch.audio_gt,
+        train.to_align_mel,
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    )
     mel = rearrange(mel, "b f t -> b t f")
     ctc, _ = model.text_aligner(mel, mel_length)
     train.stage.optimizer.zero_grad()
@@ -73,7 +78,12 @@ def train_alignment(
 @torch.no_grad()
 def validate_alignment(batch, train):
     log = build_loss_log(train)
-    mel, mel_length = calculate_mel(batch.audio_gt, train.to_align_mel)
+    mel, mel_length = calculate_mel(
+        batch.audio_gt,
+        train.to_align_mel,
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    )
     mel = rearrange(mel, "b f t -> b t f")
     ctc, _ = train.model.text_aligner(mel, mel_length)
     train.stage.optimizer.zero_grad()
@@ -123,9 +133,18 @@ def train_acoustic(
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:
     with train.accelerator.autocast():
         print_gpu_vram("init")
-        mel, _ = calculate_mel(batch.audio_gt, train.to_mel)
+        mel, _ = calculate_mel(
+            batch.audio_gt,
+            train.to_mel,
+            train.normalization.mel_log_mean,
+            train.normalization.mel_log_std,
+        )
         with torch.no_grad():
-            energy = log_norm(mel.unsqueeze(1)).squeeze(1)
+            energy = log_norm(
+                mel.unsqueeze(1),
+                train.normalization.mel_log_mean,
+                train.normalization.mel_log_std,
+            ).squeeze(1)
         pred = model.speech_predictor(
             batch.text, batch.text_length, batch.alignment, batch.pitch, energy
         )
@@ -185,8 +204,17 @@ def train_acoustic(
 
 @torch.no_grad()
 def validate_acoustic(batch, train):
-    mel, _ = calculate_mel(batch.audio_gt, train.to_mel)
-    energy = log_norm(mel.unsqueeze(1)).squeeze(1)
+    mel, _ = calculate_mel(
+        batch.audio_gt,
+        train.to_mel,
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    )
+    energy = log_norm(
+        mel.unsqueeze(1),
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    ).squeeze(1)
     pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
     pe_mel_style = train.model.pe_mel_style_encoder(mel.unsqueeze(1))
     pred_pitch, pred_energy = train.model.pitch_energy_predictor(
@@ -208,7 +236,7 @@ def validate_acoustic(batch, train):
         "energy",
         torch.nn.functional.smooth_l1_loss(energy, pred_energy),
     )
-    log.add_loos(
+    log.add_loss(
         "multi_phase",
         multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
     )
@@ -244,7 +272,12 @@ def train_textual(
     batch, model, train, probing
 ) -> Tuple[LossLog, Optional[torch.Tensor]]:
     with train.accelerator.autocast():
-        mel, _ = calculate_mel(batch.audio_gt, train.to_mel)
+        mel, _ = calculate_mel(
+            batch.audio_gt,
+            train.to_mel,
+            train.normalization.mel_log_mean,
+            train.normalization.mel_log_std,
+        )
         pe_text_encoding, _, _ = model.pe_text_encoder(batch.text, batch.text_length)
         pe_mel_style = model.pe_mel_style_encoder(mel.unsqueeze(1))
         pred_pitch, pred_energy = model.pitch_energy_predictor(
@@ -254,13 +287,21 @@ def train_textual(
             batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
         )
         with torch.no_grad():
-            energy = log_norm(mel.unsqueeze(1)).squeeze(1)
+            energy = log_norm(
+                mel.unsqueeze(1),
+                train.normalization.mel_log_mean,
+                train.normalization.mel_log_std,
+            ).squeeze(1)
         train.stage.optimizer.zero_grad()
         log = build_loss_log(train)
-        target_spec, pred_spec = train.multi_spectrogram(
+        target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
             target=batch.audio_gt, pred=pred.audio.squeeze(1)
         )
         train.stft_loss(target_list=target_spec, pred_list=pred_spec, log=log)
+        log.add_loss(
+            "multi_phase",
+            multi_phase_loss(pred_phase, target_phase, train.model_config.n_fft),
+        )
         log.add_loss(
             "generator",
             train.generator_loss(
@@ -283,7 +324,12 @@ def train_textual(
 
 @torch.no_grad()
 def validate_textual(batch, train):
-    mel, _ = calculate_mel(batch.audio_gt, train.to_mel)
+    mel, _ = calculate_mel(
+        batch.audio_gt,
+        train.to_mel,
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    )
     pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
     pe_mel_style = train.model.pe_mel_style_encoder(mel.unsqueeze(1))
     pred_pitch, pred_energy = train.model.pitch_energy_predictor(
@@ -292,7 +338,11 @@ def validate_textual(batch, train):
     pred = train.model.speech_predictor(
         batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
     )
-    energy = log_norm(mel.unsqueeze(1)).squeeze(1)
+    energy = log_norm(
+        mel.unsqueeze(1),
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    ).squeeze(1)
     log = build_loss_log(train)
     target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
         target=batch.audio_gt, pred=pred.audio.squeeze(1)
@@ -336,14 +386,23 @@ stages["textual"] = StageType(
 
 def train_style(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.Tensor]]:
     with train.accelerator.autocast():
-        mel, _ = calculate_mel(batch.audio_gt, train.to_mel)
+        mel, _ = calculate_mel(
+            batch.audio_gt,
+            train.to_mel,
+            train.normalization.mel_log_mean,
+            train.normalization.mel_log_std,
+        )
         pe_text_encoding, _, _ = model.pe_text_encoder(batch.text, batch.text_length)
         pe_text_style = model.pe_text_style_encoder(pe_text_encoding, batch.text_length)
         pe_mel_style = model.pe_mel_style_encoder(mel.unsqueeze(1))
         pred_pitch, pred_energy = train.model.pitch_energy_predictor(
             pe_text_encoding, batch.text_length, batch.alignment, pe_text_style
         )
-        energy = log_norm(mel.unsqueeze(1)).squeeze(1)
+        energy = log_norm(
+            mel.unsqueeze(1),
+            train.normalization.mel_log_mean,
+            train.normalization.mel_log_std,
+        ).squeeze(1)
 
         train.stage.optimizer.zero_grad()
         log = build_loss_log(train)
@@ -363,7 +422,12 @@ def train_style(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.T
 
 @torch.no_grad()
 def validate_style(batch, train):
-    mel, _ = calculate_mel(batch.audio_gt, train.to_mel)
+    mel, _ = calculate_mel(
+        batch.audio_gt,
+        train.to_mel,
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    )
     pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
     pe_text_style = train.model.pe_text_style_encoder(
         pe_text_encoding, batch.text_length
@@ -375,7 +439,11 @@ def validate_style(batch, train):
     pred = train.model.speech_predictor(
         batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
     )
-    energy = log_norm(mel.unsqueeze(1)).squeeze(1)
+    energy = log_norm(
+        mel.unsqueeze(1),
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    ).squeeze(1)
     log = build_loss_log(train)
     target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
         target=batch.audio_gt, pred=pred.audio.squeeze(1)
@@ -511,9 +579,18 @@ stages["duration"] = StageType(
 def train_joint(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.Tensor]]:
     with train.accelerator.autocast():
         print_gpu_vram("init")
-        mel, _ = calculate_mel(batch.audio_gt, train.to_mel)
+        mel, _ = calculate_mel(
+            batch.audio_gt,
+            train.to_mel,
+            train.normalization.mel_log_mean,
+            train.normalization.mel_log_std,
+        )
         with torch.no_grad():
-            energy = log_norm(mel.unsqueeze(1)).squeeze(1)
+            energy = log_norm(
+                mel.unsqueeze(1),
+                train.normalization.mel_log_mean,
+                train.normalization.mel_log_std,
+            ).squeeze(1)
         pe_mel_style = train.model.pe_mel_style_encoder(mel.unsqueeze(1))
         pe_text_encoding, _, _ = train.model.pe_text_encoder(
             batch.text, batch.text_length
@@ -582,7 +659,12 @@ def train_joint(batch, model, train, probing) -> Tuple[LossLog, Optional[torch.T
 
 @torch.no_grad()
 def validate_joint(batch, train):
-    mel, _ = calculate_mel(batch.audio_gt, train.to_mel)
+    mel, _ = calculate_mel(
+        batch.audio_gt,
+        train.to_mel,
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    )
     pe_text_encoding, _, _ = train.model.pe_text_encoder(batch.text, batch.text_length)
     pe_text_style = train.model.pe_text_style_encoder(
         pe_text_encoding, batch.text_length
@@ -593,7 +675,11 @@ def validate_joint(batch, train):
     pred = train.model.speech_predictor(
         batch.text, batch.text_length, batch.alignment, pred_pitch, pred_energy
     )
-    energy = log_norm(mel.unsqueeze(1)).squeeze(1)
+    energy = log_norm(
+        mel.unsqueeze(1),
+        train.normalization.mel_log_mean,
+        train.normalization.mel_log_std,
+    ).squeeze(1)
     log = build_loss_log(train)
     target_spec, pred_spec, target_phase, pred_phase = train.multi_spectrogram(
         target=batch.audio_gt, pred=pred.audio.squeeze(1)
@@ -645,8 +731,7 @@ def detach_all(spec_list):
 
 
 @torch.no_grad()
-def calculate_mel(audio, to_mel):
-    mean, std = -4, 4
+def calculate_mel(audio, to_mel, mean, std):
     mel = to_mel(audio)
     mel = (torch.log(1e-5 + mel) - mean) / std
     # STFT returns audio_len // hop_len + 1, so we strip off the extra here

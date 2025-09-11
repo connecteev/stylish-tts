@@ -4,6 +4,10 @@ import importlib.resources
 
 from stylish_tts.lib.config_loader import load_config_yaml, load_model_config_yaml
 import stylish_tts.train.config as config
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def get_config(config_path):
@@ -300,10 +304,13 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
 
     disc_loss = DiscriminatorLoss(mrd=model.mrd)
 
+    from stylish_tts.train.train_context import NormalizationStats
+    norm = NormalizationStats()
     accelerator.register_for_checkpointing(config)
     accelerator.register_for_checkpointing(model_config)
     accelerator.register_for_checkpointing(manifest)
     accelerator.register_for_checkpointing(disc_loss)
+    accelerator.register_for_checkpointing(norm)
 
     accelerator.load_state(checkpoint)
 
@@ -315,3 +322,15 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
         config.training.device,
         duration_processor,
     )
+    # Embed normalization stats into ONNX metadata (only if present in checkpoint)
+    from stylish_tts.train.convert_to_onnx import add_meta_data_onnx
+    if norm.frames > 0:
+        add_meta_data_onnx(speech, "mel_log_mean", str(norm.mel_log_mean))
+        add_meta_data_onnx(speech, "mel_log_std", str(norm.mel_log_std))
+        logger.info(
+            f"Embedded normalization stats from checkpoint: mean={norm.mel_log_mean:.4f}, std={norm.mel_log_std:.4f}"
+        )
+    else:
+        logger.warning(
+            "Checkpoint did not contain normalization stats; skipping embedding in ONNX."
+        )

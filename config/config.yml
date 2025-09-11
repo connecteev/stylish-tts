@@ -10,6 +10,8 @@ training:
   # Lower precision slows training.
   # "bf16", "fp16", or "no" for no mixed precision
   mixed_precision: "no"
+  # Reserve vRAM buffer during probe to avoid OOMs
+  vram_reserve: 200
 
 # Number of epochs, max batch sizes and general learning rate of each stage.
 training_plan:
@@ -65,8 +67,8 @@ validation:
   # - "other.other.filename.from.val_data.txt"
 
 
-# Weights are pre-tuned. Do not change these unless you
-# know what you are doing.
+  # Weights are pre-tuned. Do not change these unless you
+  # know what you are doing.
 loss_weight:
   # mel reconstruction loss
   mel: 5
@@ -92,6 +94,8 @@ loss_weight:
   # phase loss
   # -- if voice sounds autotuned, try increasing
   phase: 8
+  # multi-phase loss
+  multi_phase: 8
   # confidence for alignment (placeholder)
   confidence: 1
   # alignment loss
