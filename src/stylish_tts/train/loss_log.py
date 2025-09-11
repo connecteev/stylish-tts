@@ -86,7 +86,7 @@ class LossLog:
                 loss = value
             else:
                 if torch.is_tensor(value):
-                    loss = value / value.detach()
+                    loss = value / (value.detach() + 1e-9)
                 else:
                     loss = value
             weight = self.weight(key)

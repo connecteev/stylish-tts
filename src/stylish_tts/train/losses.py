@@ -119,7 +119,7 @@ class MagPhaseLoss(torch.nn.Module):
             "mag",
             torch.nn.functional.l1_loss(
                 pred.magnitude,
-                target_mag.log(),
+                torch.log(target_mag + 1e-9),
             ),
         )
         # phase_loss = self.phase_loss(pred.phase - target_phase).mean()
@@ -235,7 +235,10 @@ class DiscriminatorLossHelper(torch.nn.Module):
         for dr, dg in zip(real_score, gen_score):
             tau = 0.04
             m_dg = torch.median((dr - dg))
-            l_rel = torch.mean((((dr - dg) - m_dg) ** 2)[dr < dg + m_dg])
+            l_rel_unreduced = (((dr - dg) - m_dg) ** 2)[dr < dg + m_dg]
+            l_rel = torch.sum(l_rel_unreduced) / (
+                math.prod(l_rel_unreduced.shape) + 1e-9
+            )
             loss += tau - F.relu(tau - l_rel)
         return loss
 
@@ -348,13 +351,15 @@ class CDW_CCELoss(nn.Module):
         index = torch.arange(pred.shape[0], device=pred.device)
         if self.custom_weight is not None:
             weight = self.custom_weight[target]
-            ce = torch.log_softmax(pred, dim=1)[index, target] * (weight / weight.sum())
+            ce = torch.log_softmax(pred, dim=1)[index, target] * (
+                weight / (weight.sum() + 1e-9)
+            )
         else:
             ce = torch.log_softmax(pred, dim=1)[index, target] / pred.shape[0]
             exit(1)
             pass
         distance = self.distance_weight[target]
-        cdw = torch.log(1 - torch.softmax(pred, dim=1))  # * distance
+        cdw = torch.log((1 - torch.softmax(pred, dim=1)) + 1e-9)  # * distance
         cdw = cdw * (distance / distance.sum(dim=1, keepdim=True))
         cdw = cdw / pred.shape[0]
         return -ce.sum(), -cdw.sum() * 100
@@ -508,7 +513,7 @@ class CTCLossWithLabelPriors(nn.Module):
             num_samples = train.accelerator.gather(
                 torch.Tensor([self.num_samples]).to(log_priors_sums.device)
             )
-            num_samples = num_samples.sum().log().to(log_priors_sums.device)
+            num_samples = torch.log(num_samples.sum() + 1e-9).to(log_priors_sums.device)
             new_log_prior = log_priors_sums - num_samples
             if False:
                 print(
