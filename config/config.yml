@@ -96,6 +96,8 @@ loss_weight:
   phase: 8
   # multi-phase loss
   multi_phase: 8
+  # Loss to ensure that phase magnitude is high enough to provide numerical stability in training
+  phase_stability: 1
   # confidence for alignment (placeholder)
   confidence: 1
   # alignment loss

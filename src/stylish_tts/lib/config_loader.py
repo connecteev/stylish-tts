@@ -136,6 +136,10 @@ class LossWeightConfig(BaseModel):
     multi_phase: float = Field(
         ..., description="Weight for multi-resolution phase loss."
     )
+    phase_stability: float = Field(
+        ...,
+        description="Make sure magnitude of phase calculation is high enough for training to be numerically stable.",
+    )
     confidence: float = Field(..., description="Weight for alignment confidence")
     align_loss: float = Field(..., description="Weight for alignment loss")
     discriminator: float = Field(..., description="Weight for discriminator loss")

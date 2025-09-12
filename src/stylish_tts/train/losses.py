@@ -114,7 +114,8 @@ class MagPhaseLoss(torch.nn.Module):
             window=self.window,
         )
         target_mag = torch.abs(y_stft) + 1e-14
-        target_phase = torch.angle(y_stft)
+        target_phase = (target_mag > 1e-3).detach() * torch.angle(y_stft)
+        pred.phase = (target_mag > 1e-3).detach() * pred.phase
         log.add_loss(
             "mag",
             torch.nn.functional.l1_loss(
@@ -149,6 +150,14 @@ class MagPhaseLoss(torch.nn.Module):
         phase_loss = differential_phase_loss(pred.phase, target_phase, self.n_fft)
 
         log.add_loss("phase", phase_loss)
+        target_pred_mag = torch.ones_like(pred.phase_magnitude)
+        log.add_loss(
+            "phase_stability",
+            torch.nn.functional.l1_loss(
+                pred.phase_magnitude,
+                target_pred_mag,
+            ),
+        )
 
 
 class DiscriminatorLoss(torch.nn.Module):
