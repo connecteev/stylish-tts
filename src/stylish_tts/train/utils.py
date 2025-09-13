@@ -488,7 +488,8 @@ def torch_empty_cache(device):
         torch.mps.synchronize()
         torch.mps.empty_cache()
     elif device == "cpu":
-        torch.cpu.synchronize()
-        torch.cpu.empty_cache()
+        # torch.cpu.synchronize()
+        # torch.cpu.empty_cache()
+        pass
     else:
         exit(f"Unknown device {device}. Could not empty cache.")
