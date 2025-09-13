@@ -166,7 +166,7 @@ def train_model(
         val_dataset,
         val_time_bins,
         validation=True,
-        num_workers=4,
+        num_workers=train.config.training.data_workers,
         device=train.config.training.device,
         multispeaker=train.model_config.multispeaker,
         stage=stage,

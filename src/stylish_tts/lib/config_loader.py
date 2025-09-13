@@ -27,6 +27,10 @@ class TrainingConfig(BaseModel):
         default=200,
         description="Reserve VRAM buffer during batch probing to avoid OOMs (in MiB).",
     )
+    data_workers: int = Field(
+        ...,
+        description="Number of workers used in the dataloader. Set as high as your CPU allows.",
+    )
 
 
 class TrainingStageConfig(BaseModel):

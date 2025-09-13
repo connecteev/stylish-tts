@@ -163,7 +163,7 @@ class BatchManager:
         self.loader = build_dataloader(
             self.dataset,
             self.time_bins,
-            num_workers=32,
+            num_workers=train.config.training.data_workers,
             device=self.device,
             drop_last=True,
             multispeaker=self.multispeaker,
