@@ -39,6 +39,11 @@ def align_text(config, model_config):
     out = root / config.dataset.alignment_path
     model = root / config.dataset.alignment_model_path
     device = config.training.device
+    if device == "mps":
+        device = "cpu"
+        logger.info(
+            f"Alignment does not support mps device. Falling back on cpu training."
+        )
 
     global to_mel, norm_mean, norm_std
 

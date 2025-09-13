@@ -1,6 +1,8 @@
 import os.path as osp
 import click
 import importlib.resources
+import multiprocessing
+import torch
 
 from stylish_tts.lib.config_loader import load_config_yaml, load_model_config_yaml
 import stylish_tts.train.config as config
@@ -47,7 +49,9 @@ def cli():
     Once you have pre-cached alignments and pitches, you can `train` your model, and finally `convert` your model to ONNX for inference.
 
     """
-    pass
+    multiprocessing.set_start_method("forkserver")
+    # torch.multiprocessing.set_sharing_strategy("file_system")
+    print("Setting multiprocessing start method to spawn.")
 
 
 ##### train-align #####
@@ -305,6 +309,7 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
     disc_loss = DiscriminatorLoss(mrd=model.mrd)
 
     from stylish_tts.train.train_context import NormalizationStats
+
     norm = NormalizationStats()
     accelerator.register_for_checkpointing(config)
     accelerator.register_for_checkpointing(model_config)
@@ -324,6 +329,7 @@ def convert(config_path, model_config_path, duration, speech, checkpoint):
     )
     # Embed normalization stats into ONNX metadata (only if present in checkpoint)
     from stylish_tts.train.convert_to_onnx import add_meta_data_onnx
+
     if norm.frames > 0:
         add_meta_data_onnx(speech, "mel_log_mean", str(norm.mel_log_mean))
         add_meta_data_onnx(speech, "mel_log_std", str(norm.mel_log_std))
