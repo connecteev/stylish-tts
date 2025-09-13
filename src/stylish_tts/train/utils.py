@@ -478,3 +478,17 @@ class DurationProcessor(torch.nn.Module):
         duration = self.prediction_to_duration(pred, text_length)
         alignment = self.duration_to_alignment(duration)
         return alignment
+
+
+def torch_empty_cache(device):
+    if device == "cuda":
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
+    elif device == "mps":
+        torch.mps.synchronize()
+        torch.mps.empty_cache()
+    elif device == "cpu":
+        torch.cpu.synchronize()
+        torch.cpu.empty_cache()
+    else:
+        exit(f"Unknown device {device}. Could not empty cache.")

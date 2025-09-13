@@ -134,9 +134,7 @@ class BatchManager:
 
                         train.stage.optimizer.zero_grad()
                         gc.collect()
-                        if torch.cuda.is_available():
-                            torch.cuda.synchronize()
-                            torch.cuda.empty_cache()
+                        utils.torch_empty_cache(train.config.training.device)
                         if batch_size > 0:
                             batch_size -= 1
                     else:
@@ -157,9 +155,7 @@ class BatchManager:
 
         del lodestone
         gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-            torch.cuda.empty_cache()
+        utils.torch_empty_cache(train.config.training.device)
         train.stage.save_batch_sizes()
 
         iterator.close()
@@ -210,7 +206,7 @@ class BatchManager:
             except Exception as e:
                 batch_size = train.stage.get_batch_size(last_bin)
                 audio_length = (last_bin * 0.25) + 0.25
-                if "CUDA out of memory" in str(e) or "cufft" in str(e).lower():
+                if "out of memory" in str(e) or "cufft" in str(e).lower():
                     progress_bar.clear() if progress_bar is not None else None
                     train.logger.info(
                         f"{attempt * ('*' if attempt < max_attempts else 'X')} "
@@ -228,9 +224,7 @@ class BatchManager:
                         train.stage.set_batch_size(last_bin, batch_size)
                         train.stage.save_batch_sizes()
                     gc.collect()
-                    if torch.cuda.is_available():
-                        torch.cuda.synchronize()
-                        torch.cuda.empty_cache()
+                    utils.torch_empty_cache(train.config.training.device)
                 else:
                     logger.error("".join(traceback.format_exception(e)))
                     raise e

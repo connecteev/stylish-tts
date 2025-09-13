@@ -22,7 +22,7 @@ from stylish_tts.train.losses import (
     WavLMLoss,
     DurationLoss,
 )
-from stylish_tts.train.utils import get_data_path_list, save_git_diff
+from stylish_tts.train.utils import get_data_path_list, save_git_diff, torch_empty_cache
 from stylish_tts.train.loss_log import combine_logs
 from stylish_tts.train.convert_to_onnx import convert_to_onnx
 import tqdm
@@ -250,9 +250,7 @@ def train_model(
     while not done:
         train.logger.info(f"Training stage {train.manifest.stage}")
         train.manifest.best_loss = float("inf")  # best test loss
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-            torch.cuda.empty_cache()
+        torch_empty_cache(train.config.training.device)
         # save_checkpoint(train, prefix="checkpoint_test", long=False)
         # from models.stft import STFT
         # stft = STFT(
