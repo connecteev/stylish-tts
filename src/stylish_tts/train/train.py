@@ -250,8 +250,9 @@ def train_model(
     while not done:
         train.logger.info(f"Training stage {train.manifest.stage}")
         train.manifest.best_loss = float("inf")  # best test loss
-        torch.cuda.synchronize()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
         # save_checkpoint(train, prefix="checkpoint_test", long=False)
         # from models.stft import STFT
         # stft = STFT(
@@ -287,7 +288,9 @@ def train_model(
             save_git_diff(train.out_dir)
             # Copy normalization stats into the new stage directory
             try:
-                with open(osp.join(train.out_dir, "normalization.json"), "w", encoding="utf-8") as f:
+                with open(
+                    osp.join(train.out_dir, "normalization.json"), "w", encoding="utf-8"
+                ) as f:
                     json.dump(
                         {
                             "mel_log_mean": train.normalization.mel_log_mean,

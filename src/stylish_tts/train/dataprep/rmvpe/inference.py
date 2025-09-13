@@ -42,10 +42,8 @@ class RMVPE:
         return f0
 
     def infer_from_audio(
-        self, audio, sample_rate=16000, device=None, thred=0.03, use_viterbi=False
+        self, audio, *, sample_rate, device, thred=0.03, use_viterbi=False
     ):
-        if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
         audio = torch.from_numpy(audio).float().unsqueeze(0).to(device)
         if sample_rate == 16000:
             audio_res = audio
