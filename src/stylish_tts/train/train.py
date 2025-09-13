@@ -107,6 +107,7 @@ def train_model(
         logger.info(
             f"Alignment training does not support mps device. Falling back on cpu training."
         )
+        train.config.training.device = "cpu"
 
     # Set up data loaders and batch manager
     if not osp.exists(train.data_path(train.config.dataset.train_data)):
