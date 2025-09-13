@@ -109,6 +109,9 @@ def compute_log_mel_stats(
     except Exception:
         mel_device = torch.device("cpu")
 
+    device = torch.device("cpu")
+    to_mel = to_mel.to(device)
+
     for line in file_lines:
         parts = line.strip().split("|")
         if len(parts) < 1:
@@ -123,7 +126,7 @@ def compute_log_mel_stats(
             wave = wave[:, 0]
         if sr != sample_rate:
             wave = librosa.resample(wave, orig_sr=sr, target_sr=sample_rate)
-        wave_t = torch.from_numpy(wave).float().to(mel_device)
+        wave_t = torch.from_numpy(wave).float().to(device)
         mel = to_mel(wave_t)
         log_mel = torch.log(1e-5 + mel)
         # Accumulate on CPU in float64 for numerical stability
@@ -139,6 +142,8 @@ def compute_log_mel_stats(
     else:
         var = torch.tensor(16.0, dtype=torch.float64)
     std = torch.sqrt(torch.clamp(var, min=1e-12))
+
+    to_mel.to(mel_device)
     return float(mean.item()), float(std.item()), int(count)
 
 
