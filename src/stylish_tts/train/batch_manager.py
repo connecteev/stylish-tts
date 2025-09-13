@@ -130,7 +130,6 @@ class BatchManager:
                             f"TRAIN_BATCH OOM ({last_bin}) @ batch_size {batch_size}: audio_len {audio_length} total_audio_len {audio_length * batch_size}"
                         )
                         iterator.display()
-                        import gc
 
                         train.stage.optimizer.zero_grad()
                         gc.collect()
