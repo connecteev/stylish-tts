@@ -33,12 +33,13 @@ dependencies = [
     "tensorboard>=2.18.0",
     "tqdm>=4.67.1",
     "onnx>=1.18.0",
-    "onnxruntime-gpu>=1.22.0",
+    # "onnxruntime-gpu>=1.22.0",
     "onnxscript>=0.3.2",
     "nvidia-ml-py>=13.580.65",
     "pyworld>=0.3.5",
     "resampy>=0.4.3",
-	"click>=8.1.8",
+    "click>=8.1.8",
+    "onnxruntime>=1.22.1",
 ]
 
 [project.urls]
@@ -59,13 +60,13 @@ en = [
 dev = [
     "ipykernel>=6.29.5",
     "jupyter>=1.1.1",
-    "torch~=2.8",
-    "torchaudio~=2.8",
-	"k2>=1.24.4.dev20250807",
+    # "torch~=2.8",
+    # "torchaudio~=2.8",
+	# "k2>=1.24.4.dev20250807",
 ]
 
-[tool.uv.sources]
-k2 = { url = "https://huggingface.co/csukuangfj/k2/resolve/main/ubuntu-cuda/k2-1.24.4.dev20250807+cuda12.8.torch2.8.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"}
+# [tool.uv.sources]
+# k2 = { url = "https://huggingface.co/csukuangfj/k2/resolve/main/ubuntu-cuda/k2-1.24.4.dev20250807+cuda12.8.torch2.8.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl"}
 
 # [[tool.uv.index]]
 # url = "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/Triton-Nightly/pypi/simple/"

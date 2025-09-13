@@ -630,15 +630,6 @@ wheels = [
 ]
 
 [[package]]
-name = "graphviz"
-version = "0.21"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f8/b3/3ac91e9be6b761a4b30d66ff165e54439dcd48b83f4e20d644867215f6ca/graphviz-0.21.tar.gz", hash = "sha256:20743e7183be82aaaa8ad6c93f8893c923bd6658a04c32ee115edb3c8a835f78", size = 200434, upload-time = "2025-06-15T09:35:05.824Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/4c/e0ce1ef95d4000ebc1c11801f9b944fa5910ecc15b5e351865763d8657f8/graphviz-0.21-py3-none-any.whl", hash = "sha256:54f33de9f4f911d7e84e4191749cac8cc5653f815b06738c54db9a15ab8b1e42", size = 47300, upload-time = "2025-06-15T09:35:04.433Z" },
-]
-
-[[package]]
 name = "grpcio"
 version = "1.74.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1132,29 +1123,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/b9/7d/160595ca88ee87ac6
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/6a/ca128561b22b60bd5a0c4ea26649e68c8556b82bc70a0c396eebc977fe86/jupyterlab_widgets-3.0.15-py3-none-any.whl", hash = "sha256:d59023d7d7ef71400d51e6fee9a88867f6e65e10a4201605d2d7f3e8f012a31c", size = 216571, upload-time = "2025-05-05T12:32:29.534Z" },
 ]
-
-[[package]]
-name = "k2"
-version = "1.24.4.dev20250807+cuda12.8.torch2.8.0"
-source = { url = "https://huggingface.co/csukuangfj/k2/resolve/main/ubuntu-cuda/k2-1.24.4.dev20250807+cuda12.8.torch2.8.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" }
-dependencies = [
-    { name = "graphviz" },
-    { name = "torch" },
-]
-wheels = [
-    { url = "https://huggingface.co/csukuangfj/k2/resolve/main/ubuntu-cuda/k2-1.24.4.dev20250807+cuda12.8.torch2.8.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:fb02e5e8ecf2e50e1e2d78cd8c9f348e2408d07fc45b8de0b3547c3539ac6916" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "clang-format", marker = "extra == 'dev'", specifier = "==9.0.0" },
-    { name = "flake8", marker = "extra == 'dev'", specifier = "==3.8.3" },
-    { name = "graphviz" },
-    { name = "torch", specifier = "==2.8.0" },
-    { name = "typing-extensions", marker = "python_full_version < '3.8'" },
-    { name = "yapf", marker = "extra == 'dev'", specifier = "==0.27.0" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "kiwisolver"
@@ -1865,8 +1833,8 @@ wheels = [
 ]
 
 [[package]]
-name = "onnxruntime-gpu"
-version = "1.22.0"
+name = "onnxruntime"
+version = "1.22.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "coloredlogs" },
@@ -1877,11 +1845,16 @@ dependencies = [
     { name = "sympy" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/5c/3f9700ba277d52c121dd2cebc8a672fb60b53e888972fc6682b6692a766c/onnxruntime_gpu-1.22.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:86b064c8f6cbe6da03f51f46351237d985f8fd5eb907d3f9997ea91881131a13", size = 283199528, upload-time = "2025-05-09T19:39:54.489Z" },
-    { url = "https://files.pythonhosted.org/packages/48/9e/f95af15627c8b9f866f2e372e467a9f1e14e7ebec224ed4b8e71ce970c81/onnxruntime_gpu-1.22.0-cp312-cp312-win_amd64.whl", hash = "sha256:89cfd71e1ba17a4668e8770e344f22cde64bfd70b2ad3d03b8a390d4414b5995", size = 214923964, upload-time = "2025-05-09T19:33:04.028Z" },
-    { url = "https://files.pythonhosted.org/packages/ae/26/35efe9dae012f453f2f7698dec3604368ce91ee2a0464336d2284fe02e3b/onnxruntime_gpu-1.22.0-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c3e635792931c5edf48a6a44b8daf4f74a9458e2d60245d24d91e29b6c1c7aa5", size = 283205630, upload-time = "2025-05-09T19:40:12.749Z" },
-    { url = "https://files.pythonhosted.org/packages/7f/d8/0063e4973c54d3b39d6b3025a31f80bfda6386fa0eb16fc047f2fe724832/onnxruntime_gpu-1.22.0-cp313-cp313-win_amd64.whl", hash = "sha256:082c9744b0470448a7d814babe058d0b5074380f32839aa655e5e5f9975f6d94", size = 214924126, upload-time = "2025-05-09T19:33:14.647Z" },
-    { url = "https://files.pythonhosted.org/packages/d7/ab/943c659cded9288519c67e6d5827973762207d19035972c703a1fefd032c/onnxruntime_gpu-1.22.0-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d1559033601d71023d72a8e279b2575a104de5f46e136f87534206aa2044eb1c", size = 283210584, upload-time = "2025-05-09T19:40:27.372Z" },
+    { url = "https://files.pythonhosted.org/packages/48/70/ca2a4d38a5deccd98caa145581becb20c53684f451e89eb3a39915620066/onnxruntime-1.22.1-cp312-cp312-macosx_13_0_universal2.whl", hash = "sha256:a938d11c0dc811badf78e435daa3899d9af38abee950d87f3ab7430eb5b3cf5a", size = 34342883, upload-time = "2025-07-10T19:15:38.223Z" },
+    { url = "https://files.pythonhosted.org/packages/29/e5/00b099b4d4f6223b610421080d0eed9327ef9986785c9141819bbba0d396/onnxruntime-1.22.1-cp312-cp312-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:984cea2a02fcc5dfea44ade9aca9fe0f7a8a2cd6f77c258fc4388238618f3928", size = 14473861, upload-time = "2025-07-10T19:15:42.911Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/50/519828a5292a6ccd8d5cd6d2f72c6b36ea528a2ef68eca69647732539ffa/onnxruntime-1.22.1-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:2d39a530aff1ec8d02e365f35e503193991417788641b184f5b1e8c9a6d5ce8d", size = 16475713, upload-time = "2025-07-10T19:15:45.452Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/54/7139d463bb0a312890c9a5db87d7815d4a8cce9e6f5f28d04f0b55fcb160/onnxruntime-1.22.1-cp312-cp312-win_amd64.whl", hash = "sha256:6a64291d57ea966a245f749eb970f4fa05a64d26672e05a83fdb5db6b7d62f87", size = 12690910, upload-time = "2025-07-10T19:15:47.478Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/39/77cefa829740bd830915095d8408dce6d731b244e24b1f64fe3df9f18e86/onnxruntime-1.22.1-cp313-cp313-macosx_13_0_universal2.whl", hash = "sha256:d29c7d87b6cbed8fecfd09dca471832384d12a69e1ab873e5effbb94adc3e966", size = 34342026, upload-time = "2025-07-10T19:15:50.266Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/a6/444291524cb52875b5de980a6e918072514df63a57a7120bf9dfae3aeed1/onnxruntime-1.22.1-cp313-cp313-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:460487d83b7056ba98f1f7bac80287224c31d8149b15712b0d6f5078fcc33d0f", size = 14474014, upload-time = "2025-07-10T19:15:53.991Z" },
+    { url = "https://files.pythonhosted.org/packages/87/9d/45a995437879c18beff26eacc2322f4227224d04c6ac3254dce2e8950190/onnxruntime-1.22.1-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b0c37070268ba4e02a1a9d28560cd00cd1e94f0d4f275cbef283854f861a65fa", size = 16475427, upload-time = "2025-07-10T19:15:56.067Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/06/9c765e66ad32a7e709ce4cb6b95d7eaa9cb4d92a6e11ea97c20ffecaf765/onnxruntime-1.22.1-cp313-cp313-win_amd64.whl", hash = "sha256:70980d729145a36a05f74b573435531f55ef9503bcda81fc6c3d6b9306199982", size = 12690841, upload-time = "2025-07-10T19:15:58.337Z" },
+    { url = "https://files.pythonhosted.org/packages/52/8c/02af24ee1c8dce4e6c14a1642a7a56cebe323d2fa01d9a360a638f7e4b75/onnxruntime-1.22.1-cp313-cp313t-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:33a7980bbc4b7f446bac26c3785652fe8730ed02617d765399e89ac7d44e0f7d", size = 14479333, upload-time = "2025-07-10T19:16:00.544Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/15/d75fd66aba116ce3732bb1050401394c5ec52074c4f7ee18db8838dd4667/onnxruntime-1.22.1-cp313-cp313t-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:6e7e823624b015ea879d976cbef8bfaed2f7e2cc233d7506860a76dd37f8f381", size = 16477261, upload-time = "2025-07-10T19:16:03.226Z" },
 ]
 
 [[package]]
@@ -2783,7 +2756,7 @@ dependencies = [
     { name = "numpy" },
     { name = "nvidia-ml-py" },
     { name = "onnx" },
-    { name = "onnxruntime-gpu" },
+    { name = "onnxruntime" },
     { name = "onnxscript" },
     { name = "pydantic" },
     { name = "pyworld" },
@@ -2797,9 +2770,6 @@ dependencies = [
 dev = [
     { name = "ipykernel" },
     { name = "jupyter" },
-    { name = "k2" },
-    { name = "torch" },
-    { name = "torchaudio" },
 ]
 
 [package.metadata]
@@ -2816,7 +2786,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0.2" },
     { name = "nvidia-ml-py", specifier = ">=13.580.65" },
     { name = "onnx", specifier = ">=1.18.0" },
-    { name = "onnxruntime-gpu", specifier = ">=1.22.0" },
+    { name = "onnxruntime", specifier = ">=1.22.1" },
     { name = "onnxscript", specifier = ">=0.3.2" },
     { name = "pydantic", specifier = ">=2.10.6" },
     { name = "pyworld", specifier = ">=0.3.5" },
@@ -2831,9 +2801,6 @@ provides-extras = ["train", "en"]
 dev = [
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "jupyter", specifier = ">=1.1.1" },
-    { name = "k2", url = "https://huggingface.co/csukuangfj/k2/resolve/main/ubuntu-cuda/k2-1.24.4.dev20250807+cuda12.8.torch2.8.0-cp312-cp312-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl" },
-    { name = "torch", specifier = "~=2.8" },
-    { name = "torchaudio", specifier = "~=2.8" },
 ]
 
 [[package]]
@@ -2979,28 +2946,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/4a/15/5e488ca0bc6162c86a33b58642bc577c84ded17c7b72d97e49b5833e2d73/torch-2.8.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:8f0a9d617a66509ded240add3754e462430a6c1fc5589f86c17b433dd808f97a", size = 887990692, upload-time = "2025-08-06T14:56:18.286Z" },
     { url = "https://files.pythonhosted.org/packages/b4/a8/6a04e4b54472fc5dba7ca2341ab219e529f3c07b6941059fbf18dccac31f/torch-2.8.0-cp313-cp313t-win_amd64.whl", hash = "sha256:a7242b86f42be98ac674b88a4988643b9bc6145437ec8f048fea23f72feb5eca", size = 241603453, upload-time = "2025-08-06T14:55:22.945Z" },
     { url = "https://files.pythonhosted.org/packages/04/6e/650bb7f28f771af0cb791b02348db8b7f5f64f40f6829ee82aa6ce99aabe/torch-2.8.0-cp313-none-macosx_11_0_arm64.whl", hash = "sha256:7b677e17f5a3e69fdef7eb3b9da72622f8d322692930297e4ccb52fefc6c8211", size = 73632395, upload-time = "2025-08-06T14:55:28.645Z" },
-]
-
-[[package]]
-name = "torchaudio"
-version = "2.8.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "torch" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ac/cc/c2e2a3eb6ee956f73c68541e439916f8146170ea9cc61e72adea5c995312/torchaudio-2.8.0-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:ddef94bf181e6447cbb05f38beaca8f6c5bb8d2b9ddced1aa3452025b9fc70d3", size = 1856736, upload-time = "2025-08-06T14:58:36.3Z" },
-    { url = "https://files.pythonhosted.org/packages/c7/0d/24dad878784f1edd62862f27173781669f0c71eb46368636787d1e364188/torchaudio-2.8.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:862e2e40bf09d865e5df080a84c1a39bbcef40e43140f4b1737eb3a389d3b38f", size = 1692930, upload-time = "2025-08-06T14:58:41.312Z" },
-    { url = "https://files.pythonhosted.org/packages/c2/a6/84d80f34472503e9eb82245d7df501c59602d75d7360e717fb9b84f91c5e/torchaudio-2.8.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:93a8583f280fe83ba021aa713319381ea71362cc87b67ee38e97a43cb2254aee", size = 4014607, upload-time = "2025-08-06T14:58:47.234Z" },
-    { url = "https://files.pythonhosted.org/packages/43/ab/96ad33afa320738a7cfb4b51ba97e2f3cfb1e04ae3115d5057655103ba4f/torchaudio-2.8.0-cp312-cp312-win_amd64.whl", hash = "sha256:4b82cacd1b8ccd543b1149d8cab257a40dfda8119023d2e3a96c66349c84bffb", size = 2499890, upload-time = "2025-08-06T14:58:55.066Z" },
-    { url = "https://files.pythonhosted.org/packages/3b/ea/2a68259c4dbb5fe44ebfdcfa40b115010d8c677221a7ef0f5577f3c4f5f1/torchaudio-2.8.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:f851d32e94ca05e470f0c60e25726ec1e0eb71cb2ca5a0206b7fd03272ccc3c8", size = 1857045, upload-time = "2025-08-06T14:58:51.984Z" },
-    { url = "https://files.pythonhosted.org/packages/0d/a3/1c79a8ef29fe403b83bdfc033db852bc2a888b80c406325e5c6fb37a7f2d/torchaudio-2.8.0-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:09535a9b727c0793cd07c1ace99f3f353626281bcc3e30c2f2314e3ebc9d3f96", size = 1692755, upload-time = "2025-08-06T14:58:50.868Z" },
-    { url = "https://files.pythonhosted.org/packages/49/df/61941198e9ac6bcebfdd57e1836e4f3c23409308e3d8d7458f0198a6a366/torchaudio-2.8.0-cp313-cp313-manylinux_2_28_x86_64.whl", hash = "sha256:d2a85b124494736241884372fe1c6dd8c15e9bc1931bd325838c5c00238c7378", size = 4013897, upload-time = "2025-08-06T14:59:01.66Z" },
-    { url = "https://files.pythonhosted.org/packages/c3/ab/7175d35a4bbc4a465a9f1388571842f16eb6dec5069d7ea9c8c2d7b5b401/torchaudio-2.8.0-cp313-cp313-win_amd64.whl", hash = "sha256:c1b5139c840367a7855a062a06688a416619f6fd2ca46d9b9299b49a7d133dfd", size = 2500085, upload-time = "2025-08-06T14:58:44.95Z" },
-    { url = "https://files.pythonhosted.org/packages/34/1a/69b9f8349d9d57953d5e7e445075cbf74000173fb5f5d5d9e9d59415fc63/torchaudio-2.8.0-cp313-cp313t-macosx_11_0_arm64.whl", hash = "sha256:68df9c9068984edff8065c2b6656725e6114fe89281b0cf122c7505305fc98a4", size = 1935600, upload-time = "2025-08-06T14:58:46.051Z" },
-    { url = "https://files.pythonhosted.org/packages/71/76/40fec21b65bccfdc5c8cdb9d511033ab07a7ad4b05f0a5b07f85c68279fc/torchaudio-2.8.0-cp313-cp313t-manylinux_2_28_aarch64.whl", hash = "sha256:1951f10ed092f2dda57634f6a3950ef21c9d9352551aa84a9fccd51bbda18095", size = 1704199, upload-time = "2025-08-06T14:58:43.594Z" },
-    { url = "https://files.pythonhosted.org/packages/8e/53/95c3363413c2f2009f805144160b093a385f641224465fbcd717449c71fb/torchaudio-2.8.0-cp313-cp313t-manylinux_2_28_x86_64.whl", hash = "sha256:4f7d97494698d98854129349b12061e8c3398d33bd84c929fa9aed5fd1389f73", size = 4020596, upload-time = "2025-08-06T14:59:03.031Z" },
-    { url = "https://files.pythonhosted.org/packages/52/27/7fc2d7435af044ffbe0b9b8e98d99eac096d43f128a5cde23c04825d5dcf/torchaudio-2.8.0-cp313-cp313t-win_amd64.whl", hash = "sha256:d4a715d09ac28c920d031ee1e60ecbc91e8a5079ad8c61c0277e658436c821a6", size = 2549553, upload-time = "2025-08-06T14:59:00.019Z" },
 ]
 
 [[package]]
