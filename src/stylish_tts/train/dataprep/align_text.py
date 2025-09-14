@@ -190,8 +190,17 @@ def torch_align(mels, text, mel_length, text_length, prediction, model_config):
                 text_index += 1
                 last_text = alignment[i]
                 was_blank = False
-        assert alignment[i] == blank or alignment[i] == text[0, text_index]
-        atensor[0, text_index, i] = 1
+        if text_index > text.shape[-1]:
+            print(
+                "WARNING: alignment is longer than the sequence, likely an untrained model."
+            )
+            break
+        if alignment[i] == blank or alignment[i] == text[0, text_index]:
+            atensor[0, text_index, i] = 1
+        else:
+            print(
+                "WARNING: the alignment doesn't match the sequence, likely an untrained model."
+            )
     pred_dur = atensor.sum(dim=2).squeeze(0)
     left = torch.zeros_like(pred_dur, dtype=torch.float)
     right = torch.zeros_like(pred_dur, dtype=torch.float)
