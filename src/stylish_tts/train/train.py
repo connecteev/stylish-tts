@@ -88,11 +88,11 @@ def train_model(
 
     train_logger = logging.getLogger(__name__)
 
-    if stage == "alignment" and train.config.training.device == "mps":
+    if stage == "alignment" and config.training.device == "mps":
         logger.info(
             f"Alignment training does not support mps device. Falling back on cpu training."
         )
-        train.config.training.device = "cpu"
+        config.training.device = "cpu"
 
     train = TrainContext(stage, out_dir, config, model_config, train_logger)
 
