@@ -88,6 +88,12 @@ def train_model(
 
     train_logger = logging.getLogger(__name__)
 
+    if stage == "alignment" and train.config.training.device == "mps":
+        logger.info(
+            f"Alignment training does not support mps device. Falling back on cpu training."
+        )
+        train.config.training.device = "cpu"
+
     train = TrainContext(stage, out_dir, config, model_config, train_logger)
 
     if not osp.exists(train.out_dir):
@@ -103,12 +109,6 @@ def train_model(
             model_config_path, osp.join(train.out_dir, osp.basename(model_config_path))
         )
     save_git_diff(train.out_dir)
-
-    if stage == "alignment" and train.config.training.device == "mps":
-        logger.info(
-            f"Alignment training does not support mps device. Falling back on cpu training."
-        )
-        train.config.training.device = "cpu"
 
     # Set up data loaders and batch manager
     if not osp.exists(train.data_path(train.config.dataset.train_data)):
