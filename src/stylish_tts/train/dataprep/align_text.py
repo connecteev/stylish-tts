@@ -190,7 +190,7 @@ def torch_align(mels, text, mel_length, text_length, prediction, model_config):
                 text_index += 1
                 last_text = alignment[i]
                 was_blank = False
-        if text_index > text.shape[-1]:
+        if text_index >= text.shape[-1]:
             print(
                 "WARNING: alignment is longer than the sequence, likely an untrained model."
             )
