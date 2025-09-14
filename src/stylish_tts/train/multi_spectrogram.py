@@ -13,8 +13,8 @@ class Resolution:
 resolutions = [
     # Resolution(fft=2048, hop=50, window=67),
     # Resolution(fft=2048, hop=100, window=127),
-    Resolution(fft=2048, hop=50, window=240),  # 257),
-    Resolution(fft=2048, hop=120, window=600),  # 509),
+    Resolution(fft=512, hop=50, window=240),  # 257),
+    Resolution(fft=1024, hop=120, window=600),  # 509),
     Resolution(fft=2048, hop=240, window=1200),  # 1021),
     # Resolution(fft=2048, hop=100, window=2048),
 ]
@@ -28,11 +28,14 @@ class MultiSpectrogram(torch.nn.Module):
     ):
         super(MultiSpectrogram, self).__init__()
         self.windows = [torch.hann_window(item.window) for item in resolutions]
-        self.mel_scale = torchaudio.transforms.MelScale(
-            n_mels=128,
-            sample_rate=sample_rate,
-            n_stft=2048 // 2 + 1,
-        )
+        self.mel_scales = [
+            torchaudio.transforms.MelScale(
+                n_mels=128,
+                sample_rate=sample_rate,
+                n_stft=item.fft // 2 + 1,
+            )
+            for item in resolutions
+        ]
 
     def calculate_single(self, audio, index, item):
         window = self.windows[index].to(audio.device)
@@ -44,23 +47,35 @@ class MultiSpectrogram(torch.nn.Module):
             window=window,
             return_complex=True,
         )
-        mag = torch.abs(stft)
-        phase = (mag > 1e-3).detach() * torch.angle(stft)
-        mag = torch.log1p(self.mel_scale(mag))
+        fft_mag = torch.abs(stft)
+        phase = (fft_mag > 1e-3).detach() * torch.angle(stft)
+        mag = torch.log1p(self.mel_scales[index].to(audio.device)(fft_mag))
         mag = rearrange(mag, "b f t -> b 1 f t")
-        return mag, phase
+        fft_mag = rearrange(fft_mag, "b f t -> b 1 f t")
+        return mag, phase, fft_mag
 
     def forward(self, *, target, pred):
         target_result = []
         pred_result = []
         target_phase_result = []
         pred_phase_result = []
+        target_fft_result = []
+        pred_fft_result = []
         for index, item in enumerate(resolutions):
             with torch.no_grad():
-                t_mag, t_phase = self.calculate_single(target, index, item)
+                t_mag, t_phase, t_fft_mag = self.calculate_single(target, index, item)
+                target_fft_result.append(t_fft_mag)
                 target_phase_result.append(t_phase)
                 target_result.append(t_mag)
-            p_mag, p_phase = self.calculate_single(pred, index, item)
+            p_mag, p_phase, p_fft_mag = self.calculate_single(pred, index, item)
+            pred_fft_result.append(p_fft_mag)
             pred_phase_result.append(p_phase)
             pred_result.append(p_mag)
-        return target_result, pred_result, target_phase_result, pred_phase_result
+        return (
+            target_result,
+            pred_result,
+            target_phase_result,
+            pred_phase_result,
+            target_fft_result,
+            pred_fft_result,
+        )

@@ -355,12 +355,10 @@ class DecoderPrediction:
         audio,
         magnitude,
         phase,
-        phase_magnitude,
     ):
         self.audio = audio
         self.magnitude = magnitude
         self.phase = phase
-        self.phase_magnitude = phase_magnitude
 
 
 class DurationProcessor(torch.nn.Module):
