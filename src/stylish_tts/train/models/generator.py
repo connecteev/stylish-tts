@@ -1,6 +1,9 @@
+from functools import partial
+from typing import Optional, Tuple
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
+from torch import Tensor
 from torch.nn import Conv1d, ConvTranspose1d
 from torch.nn.utils.parametrizations import weight_norm
 
@@ -37,10 +40,11 @@ class TorchSTFT(torch.nn.Module):
             window=self.window,
             return_complex=True,
         )
-        mag = torch.abs(forward_transform) + 1e-9
-        x = torch.real(forward_transform) / mag
-        y = torch.imag(forward_transform) / mag
-        return torch.abs(forward_transform), x, y
+        return forward_transform
+        # mag = torch.abs(forward_transform) + 1e-9
+        # x = torch.real(forward_transform) / mag
+        # y = torch.imag(forward_transform) / mag
+        # return torch.abs(forward_transform), x, y
 
     def inverse(self, magnitude, x, y):
         inverse_transform = torch.istft(
@@ -495,42 +499,66 @@ class SourceModuleHnNSF(torch.nn.Module):
 
 
 class Generator(torch.nn.Module):
-    def __init__(self, *, style_dim, n_fft, win_length, hop_length, config):
+    def __init__(
+        self, *, style_dim, n_fft, win_length, hop_length, sample_rate, config
+    ):
         super(Generator, self).__init__()
 
-        self.amp_input_conv = Conv1d(
+        channels = 16
+        n_bins = n_fft // 2 + 1
+        mult_channels = 3
+        kernel_size = [13, 7]
+
+        # Prior waveform generator
+        self.prior_generator = partial(
+            generate_pcph,
+            hop_length=hop_length,
+            sample_rate=sample_rate,
+        )
+
+        self.prior_mag_proj = Conv1d(
+            n_bins,
+            n_bins,
+            config.io_conv_kernel_size,
+            1,
+            padding=get_padding(config.io_conv_kernel_size, 1),
+            padding_mode="reflect",
+        )
+
+        self.prior_phase_proj = Conv1d(
+            n_bins,
+            n_bins,
+            config.io_conv_kernel_size,
+            1,
+            padding=get_padding(config.io_conv_kernel_size, 1),
+            padding_mode="reflect",
+        )
+
+        self.amp_mel_proj = Conv1d(
             config.input_dim,
-            config.hidden_dim,
+            n_bins,
             config.io_conv_kernel_size,
             1,
             padding=get_padding(config.io_conv_kernel_size, 1),
+            padding_mode="reflect",
         )
 
-        self.amp_output_conv = Conv1d(
-            config.hidden_dim,
-            n_fft // 2 + 1,
+        self.phase_mel_proj = Conv1d(
+            config.input_dim,
+            n_bins,
             config.io_conv_kernel_size,
             1,
             padding=get_padding(config.io_conv_kernel_size, 1),
+            padding_mode="reflect",
         )
 
-        self.phase_output_real_conv = Conv1d(
-            config.hidden_dim,
-            n_fft // 2 + 1,
-            config.io_conv_kernel_size,
-            1,
-            padding=get_padding(config.io_conv_kernel_size, 1),
-        )
-        self.phase_output_imag_conv = Conv1d(
-            config.hidden_dim,
-            n_fft // 2 + 1,
-            config.io_conv_kernel_size,
-            1,
-            padding=get_padding(config.io_conv_kernel_size, 1),
-        )
+        self.amp_input_proj = nn.Conv2d(5, channels, 1, bias=False)
+        self.amp_input_norm = LayerNorm2d(channels)
+        self.phase_input_proj = nn.Conv2d(6, channels, 1, bias=False)
+        self.phase_input_norm = LayerNorm2d(channels)
 
-        self.amp_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
-        self.phase_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
+        self.amp_pre_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
+        self.phase_pre_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
         self.phase_conformer = Conformer(
             dim=config.hidden_dim,
             style_dim=style_dim,
@@ -541,10 +569,18 @@ class Generator(torch.nn.Module):
         )
         self.phase_convnext = nn.ModuleList(
             [
-                ConvNeXtBlock(
-                    dim=config.hidden_dim,
-                    intermediate_dim=config.conv_intermediate_dim,
+                # ConvNeXtBlock(
+                #     dim=config.hidden_dim,
+                #     intermediate_dim=config.conv_intermediate_dim,
+                #     style_dim=style_dim,
+                # )
+                ConvNeXtBlock2d(
+                    channels,
+                    mult_channels,
+                    kernel_size,
+                    drop_prob=0.2,
                     style_dim=style_dim,
+                    layer_scale_init_value=1 / config.conv_layers,
                 )
                 for _ in range(config.conv_layers)
             ]
@@ -559,16 +595,29 @@ class Generator(torch.nn.Module):
         )
         self.amp_convnext = nn.ModuleList(
             [
-                ConvNeXtBlock(
-                    dim=config.hidden_dim,
-                    intermediate_dim=config.conv_intermediate_dim,
+                # ConvNeXtBlock(
+                #     dim=config.hidden_dim,
+                #     intermediate_dim=config.conv_intermediate_dim,
+                #     style_dim=style_dim,
+                # )
+                ConvNeXtBlock2d(
+                    channels,
+                    mult_channels,
+                    kernel_size,
+                    drop_prob=0.2,
                     style_dim=style_dim,
+                    layer_scale_init_value=1 / config.conv_layers,
                 )
                 for _ in range(config.conv_layers)
             ]
         )
-        self.amp_final_layer_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
-        self.phase_final_layer_norm = nn.LayerNorm(config.hidden_dim, eps=1e-6)
+
+        self.amp_output_norm = LayerNorm2d(channels)
+        self.phase_output_norm = LayerNorm2d(channels)
+        self.amp_output_proj = nn.Conv2d(channels, 1, 1)
+        self.phase_output_real_proj = nn.Conv2d(channels, 1, 1)
+        self.phase_output_imag_proj = nn.Conv2d(channels, 1, 1)
+
         self.apply(self._init_weights)
         self.stft = TorchSTFT(
             filter_length=n_fft,
@@ -577,37 +626,65 @@ class Generator(torch.nn.Module):
         )
 
     def _init_weights(self, m):
-        if isinstance(m, nn.Conv1d):  # (nn.Conv1d, nn.Linear)):
+        if isinstance(m, (nn.Conv1d, nn.Conv2d)):  # (nn.Conv1d, nn.Linear)):
             nn.init.trunc_normal_(m.weight, std=0.02)
-            nn.init.constant_(m.bias, 0)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, *, mel, style, pitch, energy):
-        logamp = self.amp_input_conv(mel)
+        # Generate prior waveform and compute spectrogram
+        with torch.no_grad():
+            prior = self.prior_generator(pitch)
+            prior = prior.squeeze(1)
+            prior_spec = self.stft.transform(prior)
+            prior_spec = prior_spec[:, :, :-1]
+            prior_mag = torch.log(torch.abs(prior_spec) + 1e-9)
+            prior_phase = torch.angle(prior_spec)
+
+        # Apply input projection
+        prior_mag_proj = self.prior_mag_proj(prior_mag)
+        prior_phase_proj = self.prior_phase_proj(prior_phase)
+
+        logamp = self.amp_mel_proj(mel)
         logamp = logamp.transpose(1, 2)
-        logamp = self.amp_norm(logamp)
+        logamp = self.amp_pre_norm(logamp)
         logamp = self.amp_conformer(logamp, style)
         logamp = logamp.transpose(1, 2)
+
+        logamp = torch.stack(
+            [prior_mag, prior_phase, prior_mag_proj, prior_phase_proj, logamp], dim=1
+        )
+        logamp = self.amp_input_proj(logamp)
+        logamp = self.amp_input_norm(logamp)
+
         for conv_block in self.amp_convnext:
             logamp = conv_block(logamp, style)
 
-        logamp = logamp.transpose(1, 2)
-        phase = logamp
-        logamp = self.amp_final_layer_norm(logamp)
-        logamp = logamp.transpose(1, 2)
-        logamp = self.amp_output_conv(logamp)
+        logamp = self.amp_output_norm(logamp)
+        logamp = self.amp_output_proj(logamp)
+        logamp = logamp.squeeze(1)
 
-        phase = self.phase_norm(phase)
+        phase = self.phase_mel_proj(mel)
+        phase = phase.transpose(1, 2)
+        phase = self.phase_pre_norm(phase)
         phase = self.phase_conformer(phase, style)
         phase = phase.transpose(1, 2)
+
+        phase = torch.stack(
+            [prior_mag, prior_phase, prior_mag_proj, prior_phase_proj, logamp, phase],
+            dim=1,
+        )
+        phase = self.phase_input_proj(phase)
+        phase = self.phase_input_norm(phase)
+
         for conv_block in self.phase_convnext:
             phase = conv_block(phase, style)
-        phase = phase.transpose(1, 2)
-        phase = self.phase_final_layer_norm(phase)
-        phase = phase.transpose(1, 2)
-        real = self.phase_output_real_conv(phase)
-        imag = self.phase_output_imag_conv(phase)
 
+        phase = self.phase_output_norm(phase)
+        real = self.phase_output_real_proj(phase)
+        imag = self.phase_output_imag_proj(phase)
         phase = torch.atan2(imag, real)
+        phase = phase.squeeze(1)
 
         logamp = F.pad(logamp, pad=(0, 1), mode="replicate")
         phase = F.pad(phase, pad=(0, 1), mode="replicate")
@@ -676,3 +753,263 @@ class GRN(torch.nn.Module):
         Gx = torch.norm(x, p=2, dim=1, keepdim=True)
         Nx = Gx / (Gx.mean(dim=-1, keepdim=True) + 1e-6)
         return self.gamma * (x * Nx) + self.beta + x
+
+
+class AdaptiveLayerNorm2d(nn.Module):
+    def __init__(self, style_dim, channels, eps=1e-5):
+        super().__init__()
+        self.channels = channels
+        self.eps = eps
+
+        self.fc = nn.Linear(style_dim, channels * 2)
+
+    def forward(self, x, s):
+        h = self.fc(s)
+        h = h.view(h.size(0), h.size(1), 1, 1)
+        gamma, beta = torch.chunk(h, chunks=2, dim=1)
+
+        x = x.transpose(1, 3)
+        x = F.layer_norm(x, (self.channels,), eps=self.eps)
+        x = x.transpose(1, 3)
+        x = (1 + gamma) * x + beta
+        return x
+
+
+class ConvNeXtBlock2d(nn.Module):
+    """
+    A 2D residual block module based on ConvNeXt architecture.
+
+    Reference:
+        - https://github.com/facebookresearch/ConvNeXt
+    """
+
+    def __init__(
+        self,
+        channels: int,
+        mult_channels: int,
+        kernel_size: int,
+        drop_prob: float = 0.0,
+        style_dim: int = 64,
+        layer_scale_init_value: float = None,
+    ) -> None:
+        """
+        Initialize the ConvNeXtBlock2d module.
+
+        Args:
+            channels (int): Number of input and output channels for the block.
+            mult_channels (int): Channel expansion factor used in pointwise convolutions.
+            kernel_size (int): Size of the depthwise convolution kernel.
+            drop_prob (float, optional): Probability of dropping paths for stochastic depth (default: 0.0).
+            use_layer_norm (bool, optional): If True, layer normalization is used; otherwise,
+                batch normalization is applied (default: True).
+            layer_scale_init_value (float, optional): Initial value for the learnable layer scale parameter.
+                If None, no scaling is applied (default: None).
+        """
+        super().__init__()
+        if isinstance(kernel_size, int):
+            kernel_size = (kernel_size, kernel_size)
+        assert kernel_size[0] % 2 == 1, "Kernel size must be odd number."
+        assert kernel_size[1] % 2 == 1, "Kernel size must be odd number."
+        self.dwconv = nn.Conv2d(
+            channels,
+            channels,
+            kernel_size,
+            padding=(kernel_size[0] // 2, kernel_size[1] // 2),
+            groups=channels,
+            bias=False,
+            padding_mode="reflect",
+        )
+        self.norm = AdaptiveLayerNorm2d(style_dim, channels)
+        self.pwconv1 = nn.Conv2d(channels, channels * mult_channels, 1)
+        self.nonlinear = nn.GELU()
+        self.pwconv2 = nn.Conv2d(channels * mult_channels, channels, 1)
+        self.gamma = (
+            nn.Parameter(
+                layer_scale_init_value * torch.ones(1, channels, 1, 1),
+                requires_grad=True,
+            )
+            if layer_scale_init_value is not None
+            else None
+        )
+        self.drop_path = torch.nn.Dropout(drop_prob)
+
+    def forward(self, x: Tensor, style) -> Tensor:
+        """
+        Calculate forward propagation.
+
+        Args:
+            x (Tensor): Input tensor with shape (batch, channels, height, width).
+
+        Returns:
+            Tensor: Output tensor of the same shape (batch, channels, height, width).
+        """
+        residual = x
+        x = self.dwconv(x)
+        x = self.norm(x, style)
+        x = self.pwconv1(x)
+        x = self.nonlinear(x)
+        x = self.pwconv2(x)
+        if self.gamma is not None:
+            x = self.gamma * x
+        x = residual + self.drop_path(x)
+        return x
+
+
+def generate_pcph(
+    f0: Tensor,
+    hop_length: int,
+    sample_rate: int,
+    noise_amplitude: Optional[float] = 0.01,
+    random_init_phase: Optional[bool] = True,
+    power_factor: Optional[float] = 0.1,
+    max_frequency: Optional[float] = None,
+    *args,
+    **kwargs,
+) -> Tensor:
+    """
+    Generate pseudo-constant-power harmonic waveforms based on input F0 sequences.
+    The spectral envelope of harmonics is designed to have flat spectral envelopes.
+
+    Args:
+        f0 (Tensor): F0 sequences with shape (batch, 1, frames).
+        hop_length (int): Hop length of the F0 sequence.
+        sample_rate (int): Sampling frequency of the waveform in Hz.
+        noise_amplitude (float, optional): Amplitude of the noise component (default: 0.01).
+        random_init_phase (bool, optional): Whether to initialize phases randomly (default: True).
+        power_factor (float, optional): Factor to control the power of harmonics (default: 0.1).
+        max_frequency (float, optional): Maximum frequency to define the number of harmonics (default: None).
+
+    Returns:
+        Tensor: Generated harmonic waveform with shape (batch, 1, frames * hop_length).
+    """
+    f0 = f0.unsqueeze(1)
+    batch, _, frames = f0.size()
+    device = f0.device
+    noise = noise_amplitude * torch.randn(
+        (batch, 1, frames * hop_length), device=device
+    )
+    if torch.all(f0 <= 10.0):
+        return noise
+
+    vuv = f0 > 10.0
+    min_f0_value = torch.min(f0[f0 > 0]).item()
+    max_frequency = max_frequency if max_frequency is not None else sample_rate / 2
+    max_n_harmonics = int(max_frequency / min_f0_value)
+    n_harmonics = torch.ones_like(f0, dtype=torch.float)
+    n_harmonics[vuv] = sample_rate / 2.0 / f0[vuv]
+
+    indices = torch.arange(1, max_n_harmonics + 1, device=device).reshape(1, -1, 1)
+    harmonic_f0 = f0 * indices
+
+    # Compute harmonic mask
+    harmonic_mask = harmonic_f0 <= (sample_rate / 2.0)
+    harmonic_mask = torch.repeat_interleave(harmonic_mask, hop_length, dim=2)
+
+    # Compute harmonic amplitude
+    harmonic_amplitude = vuv * power_factor * torch.sqrt(2.0 / n_harmonics)
+    harmocic_amplitude = torch.repeat_interleave(harmonic_amplitude, hop_length, dim=2)
+
+    # Generate sinusoids
+    f0 = torch.repeat_interleave(f0, hop_length, dim=2)
+    radious = f0.to(torch.float64) / sample_rate
+    if random_init_phase:
+        radious[..., 0] += torch.rand((1, 1), device=device)
+    radious = torch.cumsum(radious, dim=2)
+    harmonic_phase = 2.0 * torch.pi * radious * indices
+    harmonics = torch.sin(harmonic_phase).to(torch.float32)
+
+    # Multiply coefficients to the harmonic signal
+    harmonics = harmonic_mask * harmonics
+    harmonics = harmocic_amplitude * torch.sum(harmonics, dim=1, keepdim=True)
+
+    return harmonics + noise
+
+
+class NormLayer(nn.Module):
+    def __init__(
+        self, channels: int, eps: Optional[float] = 1e-6, affine: Optional[bool] = True
+    ) -> None:
+        """
+        Initialize the NormLayer module.
+
+        Args:
+            channels (int): Number of input features.
+            eps (float, optional): A small constant added to the denominator for numerical stability (default: 1e-6).
+            affine (bool, optional): If True, this module has learnable affine parameters (default: True).
+        """
+        super().__init__()
+        self.channels = channels
+        self.eps = eps
+        self.affine = affine
+
+        if self.affine:
+            self.gamma = nn.Parameter(torch.ones(channels))
+            self.beta = nn.Parameter(torch.zeros(channels))
+
+    def normalize(
+        self,
+        x: Tensor,
+        dim: int,
+        mean: Optional[Tensor] = None,
+        var: Optional[Tensor] = None,
+    ) -> Tuple[Tensor, Tensor, Tensor]:
+        """
+        Apply normalization to the input tensor.
+
+        Args:
+            x (Tensor): Input tensor with shape (batch, channels, ...).
+            dim (int): Dimensions along which statistics are calculated.
+            mean (Tensor, optional): Mean tensor (default: None).
+            var (Tensor, optional): Variance tensor (default: None).
+
+        Returns:
+            Tuple[Tensor, Tensor, Tensor]: Normalized tensor and statistics.
+        """
+        # Calculate the mean along dimensions to be reduced
+        if mean is None:
+            mean = x.mean(dim, keepdim=True)
+
+        # Centerize the input tensor
+        x = x - mean
+
+        # Calculate the variance
+        if var is None:
+            var = (x**2).mean(dim=dim, keepdim=True)
+
+        # Normalize
+        x = x / torch.sqrt(var + self.eps)
+
+        if self.affine:
+            shape = [1, self.channels] + [1] * (x.ndim - 2)
+            x = self.gamma.view(*shape) * x + self.beta.view(*shape)
+
+        return x, mean, var
+
+
+class LayerNorm2d(NormLayer):
+    def __init__(
+        self, channels: int, eps: Optional[float] = 1e-6, affine: Optional[bool] = True
+    ) -> None:
+        """
+        Initialize the LayerNorm2d module.
+
+        Args:
+            channels (int): Number of input features.
+            eps (float, optional): A small constant added to the denominator for numerical stability (default: 1e-6).
+            affine (bool, optional): If True, this module has learnable affine parameters (default: True).
+        """
+        super().__init__(channels, eps, affine)
+        self.reduced_dim = [1, 2, 3]
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        Apply normalization to the input tensor.
+
+        Args:
+            x (Tensor): Input tensor with shape (batch, channels, height, width).
+
+        Returns:
+            Tensor: Normalized tensor.
+        """
+        x, *_ = self.normalize(x, dim=self.reduced_dim)
+        return x

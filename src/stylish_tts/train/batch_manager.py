@@ -123,7 +123,11 @@ class BatchManager:
                         train.stage.set_batch_size(key, batch_size)
                     done = True
                 except Exception as e:
-                    if "out of memory" in str(e) or "cufft" in str(e).lower():
+                    if (
+                        "out of memory" in str(e)
+                        or "cufft" in str(e).lower()
+                        or "CUBLAS_STATUS_ALLOC_FAILED" in str(e).upper()
+                    ):
                         audio_length = (last_bin * 0.25) + 0.25
                         iterator.clear()
                         train.logger.info(
