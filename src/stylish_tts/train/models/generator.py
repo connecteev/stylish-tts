@@ -607,8 +607,7 @@ class Generator(torch.nn.Module):
         real = self.phase_output_real_conv(phase)
         imag = self.phase_output_imag_conv(phase)
 
-        phase_magnitude = torch.abs(real + imag * 1j)
-        phase = (phase_magnitude > 1e-3).detach() * torch.atan2(imag, real)
+        phase = torch.atan2(imag, real)
 
         logamp = F.pad(logamp, pad=(0, 1), mode="replicate")
         phase = F.pad(phase, pad=(0, 1), mode="replicate")
@@ -623,7 +622,6 @@ class Generator(torch.nn.Module):
             audio=audio,
             magnitude=logamp,
             phase=phase,
-            phase_magnitude=phase_magnitude,
         )
 
 
