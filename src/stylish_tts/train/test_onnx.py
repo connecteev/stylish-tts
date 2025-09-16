@@ -24,7 +24,7 @@ def read_meta_data_onnx(filename, key):
 @click.option("--duration", type=str)
 @click.option("--text", type=str, help="A list of phonemes")
 @click.option("--combine", type=bool, default=True, help="Combine to one file")
-def main(speech, duration, model_config_path, text, combine):
+def main(speech, duration, text, combine):
     texts = [text]
     model_config = read_meta_data_onnx(speech, "model_config")
     assert (
