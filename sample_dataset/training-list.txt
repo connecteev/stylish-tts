@@ -1,0 +1,15 @@
+1-path-to-wav-file-in-wav-dir-resampled-at-24khz.wav|ɔnðə kˈɑːntɹɛɹi|0|On the contrary
+2-path-to-wav-file-in-wav-dir-resampled-at-24khz.wav|fɚðə fˈɜːst tˈaɪm|0|For the first time
+3-path-to-wav-file-in-wav-dir-resampled-at-24khz.wav|æz tˈaɪm pˈæst|0|As time passed
+4-path-to-wav-file-in-wav-dir-resampled-at-24khz.wav|ðɪ ˈɜːli jˈɪɹz|0|The early years
+5-path-to-wav-file-in-wav-dir-resampled-at-24khz.wav|hˈɑːɹdli ˈɛnɪwˌʌn|0|Hardly anyone
+6-path-to-wav-file-in-wav-dir-resampled-at-24khz.wav|wˌɛn ðæt tˈaɪm ɚɹˈaɪvz|0|When that time arrives
+7-path-to-wav-file-in-wav-dir-resampled-at-24khz.wav|wˈʌn nˈaɪt hiː wʌz mˈɪsɪŋ|0|One night he was missing
+8-path-to-wav-file-in-wav-dir-resampled-at-24khz.wav|ðɛɹ ɪz nˈoʊ mˈædʒɪk fˈɔːɹmjʊlə|0|There is no magic formula!
+...
+...
+(as many audio files / segments as you want to have)
+(each corresponding to a file in your my_config.yml's 'wav-dir' directory)
+...
+...
+100-path-to-wav-file-in-wav-dir-resampled-at-24khz.wav|wɪð ðˌɛm wɜː jˈʌŋɡɚ mˈɛn ænd wˈɪmɪn|0|With them, were younger men and women.
